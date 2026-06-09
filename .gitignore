@@ -1,0 +1,21 @@
+# ── Large folders (download separately, see README) ──────────────────────────
+SDK_pynaoqi/
+model/
+
+# ── Config (copy from config.example.json and fill in your API key) ──────────
+config.json
+
+# ── Runtime files (auto-generated) ───────────────────────────────────────────
+speech.mp3
+command.txt
+status.txt
+
+# ── Old / dev files ───────────────────────────────────────────────────────────
+bin/
+recordings/
+
+# ── Python cache ──────────────────────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
