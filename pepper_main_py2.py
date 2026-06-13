@@ -195,14 +195,14 @@ HTML_PAGE = u"""<!DOCTYPE html>
   }
   .reset-btn {
     position: fixed;
-    bottom: 24px;
-    right: 24px;
+    top: 20px;
+    right: 20px;
     background: #333;
     color: #fff;
     border: 2px solid #555;
-    border-radius: 12px;
-    font-size: 28px;
-    padding: 10px 28px;
+    border-radius: 8px;
+    font-size: 18px;
+    padding: 6px 16px;
     cursor: pointer;
   }
   .reset-btn:active { background: #c00; border-color: #f44; }
