@@ -22,7 +22,7 @@ for _dll in ["cublas64_12.dll", "cublasLt64_12.dll", "cudnn64_9.dll", "cudnn_ops
                 except: pass
 
 # ── 2. Imports ────────────────────────────────────────────────────────────────
-import json, datetime, time
+import json, datetime, time, shutil
 import numpy as np
 import pyaudio, pygame, keyboard
 import ctranslate2
@@ -41,6 +41,7 @@ COMMAND_FILE = "command.txt"
 STATUS_FILE  = "status.txt"
 SPEECH_FILE  = "speech.mp3"
 QUERY_FILE   = "query.txt"
+AUDIO_DIR    = os.path.join(os.path.dirname(os.path.abspath(__file__)), "audio")
 RATE         = 16000
 CHUNK        = 1024
 SILENCE_SECS = 0.8        # fallback ถ้าไม่มีใน config.json
@@ -142,6 +143,18 @@ def play_local():
         pygame.mixer.music.play()
         while pygame.mixer.music.get_busy():
             time.sleep(0.05)
+
+def find_audio_file(filename):
+    for folder in [AUDIO_DIR, os.path.dirname(os.path.abspath(__file__))]:
+        path = os.path.join(folder, filename)
+        if os.path.exists(path):
+            return path
+    return None
+
+def use_audio_file(filepath):
+    pygame.mixer.music.unload()
+    shutil.copy2(filepath, SPEECH_FILE)
+    return True
 
 # ── 7. IPC: สื่อสารกับ pepper_main_py2.py ────────────────────────────────────
 def write_command(text):
@@ -309,7 +322,17 @@ try:
             t0     = time.time()
             answer = ask_gemini(text)
             print(f"ตอบ ({time.time()-t0:.1f}s): {answer}", flush=True)
-            if download_thai_tts(answer):
+            fname = answer.strip()
+            audio_path = find_audio_file(fname) if fname.lower().endswith(".mp3") and " " not in fname else None
+            if audio_path:
+                print(f"[เล่นไฟล์] {audio_path}", flush=True)
+                if use_audio_file(audio_path):
+                    display = os.path.splitext(fname)[0]
+                    if pepper_up:
+                        write_status("busy")
+                    write_command(display)
+                    play_local()
+            elif download_thai_tts(answer):
                 if pepper_up:
                     write_status("busy")
                 write_command(answer)
