@@ -43,6 +43,7 @@ VOLUME      = 80    # ระดับเสียง 0-100
 COMMAND_FILE = "command.txt"
 STATUS_FILE  = "status.txt"
 SPEECH_FILE  = "speech.mp3"
+QUERY_FILE   = "query.txt"
 
 current_speech   = None
 last_speech_text = u""
@@ -185,13 +186,21 @@ HTML_PAGE = u"""<!DOCTYPE html>
   }
   .label.listening { color: #6af; }
   .label.speaking  { color: #f84; }
-  .last-text {
-    color: #ccc;
-    font-size: 26px;
+  .query-text {
+    color: #8df;
+    font-size: 24px;
     text-align: center;
     max-width: 85%;
     line-height: 1.5;
-    min-height: 40px;
+    min-height: 36px;
+  }
+  .last-text {
+    color: #ccc;
+    font-size: 24px;
+    text-align: center;
+    max-width: 85%;
+    line-height: 1.5;
+    min-height: 36px;
   }
   .reset-btn {
     position: fixed;
@@ -214,13 +223,25 @@ HTML_PAGE = u"""<!DOCTYPE html>
     <span class="icon" id="icon">&#x1F3A4;</span>
   </div>
   <div class="label listening" id="label">Listening...</div>
+  <div class="query-text" id="query-text"></div>
   <div class="last-text" id="last-text"></div>
 </div>
 <button class="reset-btn" onclick="doReset()">&#x21BA; Reset</button>
 <script>
+var prevStatus = '';
 function doReset() {
     var x = new XMLHttpRequest();
     x.open('GET', '/reset', true);
+    x.send();
+}
+function fetchText(url, elemId) {
+    var x = new XMLHttpRequest();
+    x.open('GET', url, true);
+    x.onreadystatechange = function() {
+        if (x.readyState == 4 && x.status == 200) {
+            document.getElementById(elemId).innerHTML = x.responseText;
+        }
+    };
     x.send();
 }
 function checkStatus() {
@@ -237,26 +258,24 @@ function checkStatus() {
                 icon.innerHTML   = '&#x1F50A;';
                 label.className  = 'label speaking';
                 label.innerHTML  = 'Speaking...';
+                if (prevStatus !== 'busy' && prevStatus !== 'drain') {
+                    fetchText('/query_text', 'query-text');
+                    document.getElementById('last-text').innerHTML = '';
+                }
             } else {
                 circle.className = 'circle listening';
                 icon.innerHTML   = '&#x1F3A4;';
                 label.className  = 'label listening';
                 label.innerHTML  = 'Listening...';
-                fetchLastText();
+                if (prevStatus === 'busy' || prevStatus === 'drain') {
+                    fetchText('/last_text', 'last-text');
+                    document.getElementById('query-text').innerHTML = '';
+                }
             }
+            prevStatus = status;
         }
     };
     xhr.send();
-}
-function fetchLastText() {
-    var x = new XMLHttpRequest();
-    x.open('GET', '/last_text', true);
-    x.onreadystatechange = function() {
-        if (x.readyState == 4 && x.status == 200) {
-            document.getElementById('last-text').innerHTML = x.responseText;
-        }
-    };
-    x.send();
 }
 setInterval(checkStatus, 500);
 </script>
@@ -418,6 +437,23 @@ class SpeechHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.end_headers()
             try:
                 self.wfile.write(b"ok")
+            except Exception:
+                pass
+
+        elif self.path == "/query_text":
+            try:
+                with open(QUERY_FILE, "r") as f:
+                    body = f.read().strip().decode("utf-8").encode("utf-8")
+            except Exception:
+                body = b""
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            try:
+                self.wfile.write(body)
             except Exception:
                 pass
 

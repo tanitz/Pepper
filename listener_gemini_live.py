@@ -40,6 +40,7 @@ PROMPT_FILE  = "system_prompt.txt"
 COMMAND_FILE = "command.txt"
 STATUS_FILE  = "status.txt"
 SPEECH_FILE  = "speech.mp3"
+QUERY_FILE   = "query.txt"
 RATE         = 16000
 CHUNK        = 1024
 SILENCE_SECS = 0.8        # fallback ถ้าไม่มีใน config.json
@@ -145,6 +146,10 @@ def play_local():
 # ── 7. IPC: สื่อสารกับ pepper_main_py2.py ────────────────────────────────────
 def write_command(text):
     with open(COMMAND_FILE, "w", encoding="utf-8") as f:
+        f.write(text)
+
+def write_query(text):
+    with open(QUERY_FILE, "w", encoding="utf-8") as f:
         f.write(text)
 
 def write_status(status):
@@ -299,6 +304,7 @@ try:
 
         if text:
             print(f"ผู้ใช้: {text}", flush=True)
+            write_query(text)
             print("Gemini กำลังคิด...", flush=True)
             t0     = time.time()
             answer = ask_gemini(text)
