@@ -22,7 +22,7 @@ for _dll in ["cublas64_12.dll", "cublasLt64_12.dll", "cudnn64_9.dll", "cudnn_ops
                 except: pass
 
 # ── 2. Imports ────────────────────────────────────────────────────────────────
-import json, datetime, time, shutil
+import json, datetime, time, shutil, re
 import numpy as np
 import pyaudio, pygame, keyboard
 import ctranslate2
@@ -322,12 +322,12 @@ try:
             t0     = time.time()
             answer = ask_gemini(text)
             print(f"ตอบ ({time.time()-t0:.1f}s): {answer}", flush=True)
-            fname = answer.strip()
-            audio_path = find_audio_file(fname) if fname.lower().endswith(".mp3") and " " not in fname else None
+            mp3_match = re.search(r'([\w\-]+\.mp3)', answer, re.IGNORECASE)
+            audio_path = find_audio_file(mp3_match.group(1)) if mp3_match else None
             if audio_path:
                 print(f"[เล่นไฟล์] {audio_path}", flush=True)
                 if use_audio_file(audio_path):
-                    display = os.path.splitext(fname)[0]
+                    display = os.path.splitext(mp3_match.group(1))[0]
                     if pepper_up:
                         write_status("busy")
                     write_command(display)
