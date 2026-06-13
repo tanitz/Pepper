@@ -510,14 +510,12 @@ print("เปิด tablet แล้ว!")
 
 write_status("ready")
 clear_command()
-last_command = u""
 
 print("รอคำสั่งจาก listener_gemini_live.py...")
 
 while True:
     cmd = read_command()
-    if cmd and cmd != last_command:
-        last_command = cmd
+    if cmd:
         clear_command()
         pepper_say_thai(session, cmd)
     time.sleep(0.3)
