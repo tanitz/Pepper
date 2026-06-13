@@ -269,10 +269,11 @@ try:
                     was_busy = False
                     break
                 time.sleep(0.2)
-            if was_busy:
+            # ถ้า loop จบเอง หรือ ข้าม busy → ลงมาที่ drain โดยตรง → ต้อง reset ด้วย
+            if was_busy or read_status() == "drain":
                 drain_buffer()
                 pre_buf.clear()
-                write_status("ready")  # Tablet switches to "Listening..." เมื่อพร้อมจริง
+                write_status("ready")
 
         data = stream.read(CHUNK, exception_on_overflow=False)
         rms  = np.sqrt(np.mean(np.frombuffer(data, dtype=np.int16).astype(np.float32) ** 2))

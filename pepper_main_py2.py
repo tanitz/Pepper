@@ -38,17 +38,20 @@ def gesture_loop(session, stop_event):
 PEPPER_IP   = "172.101.99.97"
 COMPUTER_IP = "10.1.8.88"
 STREAM_PORT = 8080
+VOLUME      = 80    # ระดับเสียง 0-100
 
 COMMAND_FILE = "command.txt"
 STATUS_FILE  = "status.txt"
 SPEECH_FILE  = "speech.mp3"
 
 current_speech   = None
+last_speech_text = u""
 speech_lock      = threading.Lock()
 audio_done_event = threading.Event()
 
 def make_play_page(text=u""):
     safe_text = cgi.escape(text) if text else u""
+    vol = VOLUME / 100.0
     return u"""<!DOCTYPE html>
 <html>
 <head>
@@ -120,11 +123,12 @@ body {{
 <script>
 function done(){{var x=new XMLHttpRequest();x.open('GET','/audio_done',true);x.send();}}
 var a=document.getElementById('a');
+a.volume={vol};
 a.addEventListener('ended',done,false);
 try{{a.play();}}catch(e){{}}
 </script>
 </body>
-</html>""".format(text=safe_text)
+</html>""".format(text=safe_text, vol=vol)
 
 HTML_PAGE = u"""<!DOCTYPE html>
 <html>
@@ -181,6 +185,27 @@ HTML_PAGE = u"""<!DOCTYPE html>
   }
   .label.listening { color: #6af; }
   .label.speaking  { color: #f84; }
+  .last-text {
+    color: #ccc;
+    font-size: 26px;
+    text-align: center;
+    max-width: 85%;
+    line-height: 1.5;
+    min-height: 40px;
+  }
+  .reset-btn {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    background: #333;
+    color: #fff;
+    border: 2px solid #555;
+    border-radius: 12px;
+    font-size: 28px;
+    padding: 10px 28px;
+    cursor: pointer;
+  }
+  .reset-btn:active { background: #c00; border-color: #f44; }
 </style>
 </head>
 <body>
@@ -189,8 +214,15 @@ HTML_PAGE = u"""<!DOCTYPE html>
     <span class="icon" id="icon">&#x1F3A4;</span>
   </div>
   <div class="label listening" id="label">Listening...</div>
+  <div class="last-text" id="last-text"></div>
 </div>
+<button class="reset-btn" onclick="doReset()">&#x21BA; Reset</button>
 <script>
+function doReset() {
+    var x = new XMLHttpRequest();
+    x.open('GET', '/reset', true);
+    x.send();
+}
 function checkStatus() {
     var xhr = new XMLHttpRequest();
     xhr.open('GET', '/status', true);
@@ -210,10 +242,21 @@ function checkStatus() {
                 icon.innerHTML   = '&#x1F3A4;';
                 label.className  = 'label listening';
                 label.innerHTML  = 'Listening...';
+                fetchLastText();
             }
         }
     };
     xhr.send();
+}
+function fetchLastText() {
+    var x = new XMLHttpRequest();
+    x.open('GET', '/last_text', true);
+    x.onreadystatechange = function() {
+        if (x.readyState == 4 && x.status == 200) {
+            document.getElementById('last-text').innerHTML = x.responseText;
+        }
+    };
+    x.send();
 }
 setInterval(checkStatus, 500);
 </script>
@@ -262,6 +305,8 @@ def load_speech_from_file():
         return False
 
 def pepper_say_thai(session, text):
+    global last_speech_text
+    last_speech_text = text
     write_status("busy")
     print("Pepper: " + text.encode("utf-8"))
     if load_speech_from_file():
@@ -361,6 +406,31 @@ class SpeechHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             try:
                 self.wfile.write(data)
                 self.wfile.flush()
+            except Exception:
+                pass
+
+        elif self.path == "/reset":
+            write_status("ready")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain")
+            self.send_header("Content-Length", "2")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            try:
+                self.wfile.write(b"ok")
+            except Exception:
+                pass
+
+        elif self.path == "/last_text":
+            body = last_speech_text.encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            try:
+                self.wfile.write(body)
             except Exception:
                 pass
 
