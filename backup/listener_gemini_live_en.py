@@ -1,10 +1,7 @@
 # -*- coding: utf-8 -*-
-# listener_gemini_live.py  –  unified TH / EN
-# STT: Whisper CT2  |  AI: Google Gemini  |  TTS: edge-tts
-#
-# Language is selected on Pepper's tablet UI.
-# pepper_main.py writes the choice to lang.txt; this script reacts immediately.
-# Config hot-reload: edit config/config.json and save → takes effect on the next question.
+# listener_gemini_live_en.py
+# STT: Whisper CT2  |  AI: Google Gemini  |  TTS: edge-tts (English)
+# Edit config_en.json and save → changes take effect immediately without restart
 
 # ── 1. CUDA DLL preload (must be before other imports) ────────────────────────
 import os, ctypes, site as _site
@@ -44,43 +41,38 @@ except ImportError:
     EDGE_TTS_OK = False
 
 # ── 3. Constants ──────────────────────────────────────────────────────────────
-_BASE        = os.path.dirname(os.path.abspath(__file__))
-CONFIG_FILE  = os.path.join(_BASE, "config", "config.json")
-LANG_FILE    = "lang.txt"
+CONFIG_FILE  = "config_en.json"
+PROMPT_FILE  = "system_prompt_en.txt"
 COMMAND_FILE = "command.txt"
 STATUS_FILE  = "status.txt"
 SPEECH_FILE  = "speech.mp3"
 QUERY_FILE   = "query.txt"
-AUDIO_DIR    = os.path.join(_BASE, "audio")
-SONG_DIR     = os.path.join(_BASE, "song")
+AUDIO_DIR    = os.path.join(os.path.dirname(os.path.abspath(__file__)), "audio")
+SONG_DIR     = os.path.join(os.path.dirname(os.path.abspath(__file__)), "song")
 RATE         = 16000
 CHUNK        = 1024
-SILENCE_SECS = 0.8   # fallback when not in config.json
+SILENCE_SECS = 0.8        # fallback if not set in config_en.json
 
-# ── 4. Language state ─────────────────────────────────────────────────────────
-_current_lang = "th"   # updated from lang.txt in the main loop
+# ── TTS voice selection ───────────────────────────────────────────────────────
+# "aria"  → edge-tts: en-US-AriaNeural  (female)
+# "guy"   → edge-tts: en-US-GuyNeural   (male)
+# "jenny" → edge-tts: en-US-JennyNeural (female)
+TTS_MODE = "guy"
 
-def read_lang():
-    try:
-        with open(LANG_FILE, "r", encoding="utf-8") as f:
-            lang = f.read().strip().lower()
-        return lang if lang in ("th", "en") else "th"
-    except Exception:
-        return "th"
+# ── 4. Config: hot-reload ─────────────────────────────────────────────────────
+_config_mtime = 0
+_prompt_mtime = 0
+_cfg          = {}
+_prompt_text  = ""
 
-# ── 5. Config hot-reload ──────────────────────────────────────────────────────
-_config_mtime   = 0
-_prompt_mtime   = {"th": 0, "en": 0}
-_cfg            = {}
-_prompts        = {"th": "", "en": ""}
-
-PROMPT_FILES = {
-    "th": os.path.join(_BASE, "config", "system_prompt.txt"),
-    "en": os.path.join(_BASE, "config", "system_prompt_en.txt"),
-}
+# ── 4b. Chat history ──────────────────────────────────────────────────────────
+HISTORY_CLEAR_SECS = 300   # auto-clear after 5 minutes of inactivity
+MAX_HISTORY_PAIRS  = 8     # remember up to 8 question-answer pairs
+_chat_history      = []    # [{"role":"user","parts":[q]}, {"role":"model","parts":[a]}, ...]
+_last_q_time       = 0.0
 
 def load_config():
-    global _config_mtime, _cfg
+    global _config_mtime, _prompt_mtime, _cfg, _prompt_text
     try:
         mtime = os.path.getmtime(CONFIG_FILE)
         if mtime != _config_mtime:
@@ -90,55 +82,31 @@ def load_config():
             print(f"[config] Reloaded from {CONFIG_FILE}", flush=True)
     except Exception as e:
         print(f"[config] Read error: {e}", flush=True)
-
-    for lang, pfile in PROMPT_FILES.items():
-        try:
-            mtime = os.path.getmtime(pfile)
-            if mtime != _prompt_mtime[lang]:
-                with open(pfile, "r", encoding="utf-8") as f:
-                    _prompts[lang] = " ".join(line.strip() for line in f if line.strip())
-                _prompt_mtime[lang] = mtime
-                print(f"[config] Reloaded {pfile}", flush=True)
-        except Exception:
-            pass
+    try:
+        mtime = os.path.getmtime(PROMPT_FILE)
+        if mtime != _prompt_mtime:
+            with open(PROMPT_FILE, "r", encoding="utf-8") as f:
+                _prompt_text = " ".join(line.strip() for line in f if line.strip())
+            _prompt_mtime = mtime
+            print(f"[config] Reloaded prompt from {PROMPT_FILE}", flush=True)
+    except Exception as e:
+        print(f"[config] Prompt read error: {e}", flush=True)
     return _cfg
 
 def cfg(key, default=None):
     return _cfg.get(key, default)
 
-def get_prompt():
-    return _prompts.get(_current_lang, "")
-
-# ── 6. Chat history ───────────────────────────────────────────────────────────
-HISTORY_CLEAR_SECS = 300
-MAX_HISTORY_PAIRS  = 8
-_chat_history      = []
-_last_q_time       = 0.0
-
-def clear_history():
-    global _chat_history, _last_q_time
-    _chat_history = []
-    _last_q_time  = 0.0
-    print("\n[Chat history cleared]", flush=True)
-
-# ── 7. Gemini AI ──────────────────────────────────────────────────────────────
-_GEMINI_ERROR = {"th": "ขอโทษครับ เกิดข้อผิดพลาด", "en": "Sorry, an error occurred."}
-
+# ── 5. Gemini AI ──────────────────────────────────────────────────────────────
 def ask_gemini(question):
     global _chat_history, _last_q_time
     load_config()
-    now = datetime.datetime.now()
-    if _current_lang == "th":
-        thai_days = ["จันทร์","อังคาร","พุธ","พฤหัสบดี","ศุกร์","เสาร์","อาทิตย์"]
-        date_ctx = (f"วันนี้คือวัน{thai_days[now.weekday()]}ที่ "
-                    f"{now.day}/{now.month}/{now.year+543} เวลา {now.strftime('%H:%M')} น.")
-    else:
-        date_ctx = f"Today is {now.strftime('%A, %B %d, %Y')} at {now.strftime('%I:%M %p')}."
-    system = (get_prompt() or cfg("system_prompt", "")) + " " + date_ctx
+    now      = datetime.datetime.now()
+    date_ctx = f"Today is {now.strftime('%A, %B %d, %Y')} at {now.strftime('%I:%M %p')}."
+    system   = (_prompt_text or cfg("system_prompt", "")) + " " + date_ctx
     try:
         genai.configure(api_key=cfg("gemini_api_key"))
         model = genai.GenerativeModel(
-            cfg("gemini_model", "gemini-2.0-flash-lite"),
+            cfg("gemini_model", "gemini-3.1-flash-lite"),
             system_instruction=system,
             generation_config=genai.GenerationConfig(
                 max_output_tokens=cfg("max_output_tokens", 80),
@@ -155,43 +123,30 @@ def ask_gemini(question):
         return answer
     except Exception as e:
         print(f"Gemini error: {e}", flush=True)
-        return _GEMINI_ERROR.get(_current_lang, "Error")
+        return "Sorry, an error occurred."
 
-# ── 8. TTS ────────────────────────────────────────────────────────────────────
-_VOICES = {
-    "th": {"niwat": "th-TH-NiwatNeural", "premwadee": "th-TH-PremwadeeNeural"},
-    "en": {"aria":  "en-US-AriaNeural",  "guy": "en-US-GuyNeural", "jenny": "en-US-JennyNeural"},
+def clear_history():
+    global _chat_history, _last_q_time
+    _chat_history = []
+    _last_q_time  = 0.0
+    print("\n[Chat history cleared]", flush=True)
+
+# ── 6. TTS ────────────────────────────────────────────────────────────────────
+
+_EDGE_TTS_VOICES = {
+    "aria":  "en-US-AriaNeural",
+    "guy":   "en-US-GuyNeural",
+    "jenny": "en-US-JennyNeural",
 }
-_TTS_MODE_KEY = {"th": "tts_mode_th", "en": "tts_mode_en"}
-_TTS_DEFAULT  = {"th": "niwat",       "en": "guy"}
-_TTS_GOOGLE_LANG = {"th": "th", "en": "en"}
 
-def _is_valid_mp3(data):
-    # Valid MP3 starts with an ID3 tag or an MPEG frame sync (0xFFEx).
-    if not data or len(data) < 4:
-        return False
-    if data[:3] == b"ID3":
-        return True
-    return data[0] == 0xFF and (data[1] & 0xE0) == 0xE0
-
-def _valid_speech_file():
-    try:
-        with open(SPEECH_FILE, "rb") as f:
-            return _is_valid_mp3(f.read(4))
-    except Exception:
-        return False
-
-def download_google_tts(text, lang_code):
-    url = "https://translate.google.com/translate_tts?ie=UTF-8&q={}&tl={}&client=tw-ob".format(
-        urllib.parse.quote(text), lang_code
+def download_tts_google(text):
+    url = "https://translate.google.com/translate_tts?ie=UTF-8&q={}&tl=en&client=tw-ob".format(
+        urllib.parse.quote(text)
     )
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
     try:
         with urllib.request.urlopen(req, timeout=10) as resp:
             data = resp.read()
-        if not _is_valid_mp3(data):
-            print("TTS error: Google returned non-audio data (rate limited / text too long)")
-            return False
         pygame.mixer.music.unload()
         with open(SPEECH_FILE, "wb") as f:
             f.write(data)
@@ -200,47 +155,28 @@ def download_google_tts(text, lang_code):
         print("TTS error:", e)
         return False
 
-def _edge_tts_speak(text, voice):
-    async def _run():
-        await _edge_tts.Communicate(text, voice=voice).save(SPEECH_FILE)
-    pygame.mixer.music.unload()
-    asyncio.run(_run())
-    # edge-tts can silently produce an empty/invalid file for some text+voice.
-    # Raise so speak() falls back to Google TTS instead of loading bad audio.
-    if not _valid_speech_file():
-        raise RuntimeError("edge-tts produced empty/invalid audio")
-
-def speak(text):
-    mode_key  = _TTS_MODE_KEY.get(_current_lang, "tts_mode_th")
-    tts_mode  = cfg(mode_key, _TTS_DEFAULT.get(_current_lang, "niwat"))
-    voices    = _VOICES.get(_current_lang, _VOICES["th"])
-    if tts_mode in voices and EDGE_TTS_OK:
-        try:
-            _edge_tts_speak(text, voices[tts_mode])
-            return True
-        except Exception as e:
-            print(f"edge-tts error: {e} — fallback Google TTS")
-    return download_google_tts(text, _TTS_GOOGLE_LANG.get(_current_lang, "th"))
-
-def _play_speech_blocking():
-    # Load + play speech.mp3, guarding against invalid data so a bad TTS/song
-    # file logs cleanly instead of crashing pygame's decoder.
-    if not _valid_speech_file():
-        print(f"[play] Skipped: {SPEECH_FILE} is missing or not a valid MP3", flush=True)
-        return
-    try:
+def play_local():
+    if cfg("debug", False):
         pygame.mixer.music.load(SPEECH_FILE)
         pygame.mixer.music.play()
         while pygame.mixer.music.get_busy():
             time.sleep(0.05)
-    except Exception as e:
-        print(f"[play] Audio playback failed: {e}", flush=True)
 
-def play_local():
-    if cfg("debug", False):
-        _play_speech_blocking()
+def _edge_tts_speak(text, voice_key):
+    async def _run():
+        await _edge_tts.Communicate(text, voice=_EDGE_TTS_VOICES[voice_key]).save(SPEECH_FILE)
+    pygame.mixer.music.unload()
+    asyncio.run(_run())
 
-# ── 9. Audio file helpers ─────────────────────────────────────────────────────
+def speak(text):
+    if TTS_MODE in _EDGE_TTS_VOICES and EDGE_TTS_OK:
+        try:
+            _edge_tts_speak(text, TTS_MODE)
+            return True
+        except Exception as e:
+            print(f"edge-tts error: {e} — fallback Google TTS")
+    return download_tts_google(text)
+
 def find_audio_file(filename):
     for folder in [AUDIO_DIR, os.path.dirname(os.path.abspath(__file__))]:
         path = os.path.join(folder, filename)
@@ -253,10 +189,8 @@ def use_audio_file(filepath):
     shutil.copy2(filepath, SPEECH_FILE)
     return True
 
-# ── 10. Song shuffle queue ────────────────────────────────────────────────────
+# ── Song shuffle queue ────────────────────────────────────────────────────────
 _song_queue = []
-_SING_INTRO  = {"th": "ได้เลยครับเจ้านาย",               "en": "Sure thing! Here is a song for you."}
-_SING_EMPTY  = {"th": "ขอโทษครับ ไม่พบเพลงในโฟลเดอร์ครับ", "en": "Sorry, no songs found in the songs folder."}
 
 def pick_next_song():
     global _song_queue
@@ -272,10 +206,10 @@ def pick_next_song():
         random.shuffle(_song_queue)
         print(f"[song] Shuffled {len(_song_queue)} songs", flush=True)
     chosen = _song_queue.pop(0)
-    print(f"[song] Playing: {chosen}  ({len(_song_queue)} remaining)", flush=True)
+    print(f"[song] Playing: {chosen}  ({len(_song_queue)} remaining in queue)", flush=True)
     return os.path.join(SONG_DIR, chosen), os.path.splitext(chosen)[0]
 
-# ── 11. IPC: communicate with pepper_main.py ─────────────────────────────────
+# ── 7. IPC: communicate with pepper_main_py2.py ───────────────────────────────
 def write_command(text):
     with open(COMMAND_FILE, "w", encoding="utf-8") as f:
         f.write(text)
@@ -292,17 +226,17 @@ def read_status():
     try:
         with open(STATUS_FILE, "r", encoding="utf-8") as f:
             return f.read().strip()
-    except Exception:
+    except:
         return "ready"
 
-# ── 12. Audio recording ───────────────────────────────────────────────────────
+# ── 8. Audio: record and process ──────────────────────────────────────────────
 def drain_buffer(seconds=1.5):
     chunks = int(seconds * DEVICE_RATE / CHUNK)
     for _ in range(chunks):
         stream.read(CHUNK, exception_on_overflow=False)
 
 def record_until_silence(pre_frames=None):
-    silence_threshold = cfg(f"silence_threshold_{_current_lang}", 400)
+    silence_threshold = cfg("silence_threshold", 400)
     max_chunks   = int(cfg("max_record_secs", 6) * DEVICE_RATE / CHUNK)
     silent_limit = int(cfg("silence_secs", SILENCE_SECS) * DEVICE_RATE / CHUNK)
     frames       = list(pre_frames) if pre_frames else []
@@ -327,16 +261,15 @@ def record_until_silence(pre_frames=None):
 # STARTUP
 # ══════════════════════════════════════════════════════════════════════════════
 load_config()
-_current_lang = read_lang()
-print(f"Starting language: {_current_lang.upper()}", flush=True)
 pygame.mixer.init()
 
 cuda_count = ctranslate2.get_cuda_device_count()
 use_cuda   = cuda_count > 0
 print(f"CUDA devices: {cuda_count}  →  Using: {'GPU (CUDA)' if use_cuda else 'CPU'}", flush=True)
+if not use_cuda:
+    print("  [tip] For GPU: py -3 -m pip install ctranslate2 --force-reinstall", flush=True)
 
 _MODEL_PATH = cfg("whisper_model_path") or "large-v3"
-print(f"Loading Whisper model: {_MODEL_PATH}", flush=True)
 whisper = WhisperModel(
     _MODEL_PATH,
     device       = "cuda" if use_cuda else "cpu",
@@ -348,7 +281,7 @@ whisper.feature_extractor = FeatureExtractor(feature_size=128)
 print("STT model loaded!", flush=True)
 
 p = pyaudio.PyAudio()
-print("\n--- Microphones ---")
+print("\n--- Microphones found ---")
 input_devices = []
 for i in range(p.get_device_count()):
     info = p.get_device_info_by_index(i)
@@ -364,52 +297,33 @@ else:
     device_index = None
     print("Using default device")
 
-DEVICE_RATE = (int(p.get_device_info_by_index(device_index)["defaultSampleRate"])
-               if device_index is not None
-               else int(p.get_default_input_device_info()["defaultSampleRate"]))
+DEVICE_RATE = int(p.get_device_info_by_index(device_index)["defaultSampleRate"]) if device_index is not None \
+              else int(p.get_default_input_device_info()["defaultSampleRate"])
 print(f"Sample rate: {DEVICE_RATE} Hz")
 
 stream = p.open(format=pyaudio.paInt16, channels=1, rate=DEVICE_RATE,
                 input=True, input_device_index=device_index, frames_per_buffer=CHUNK)
 stream.start_stream()
-pre_buf = deque(maxlen=int(0.4 * DEVICE_RATE / CHUNK) + 1)
+pre_buf = deque(maxlen=int(0.4 * DEVICE_RATE / CHUNK) + 1)  # pre-buffer 400ms
 write_status("ready")
-print(f"\nReady — [Space]=reset busy   Ctrl+C=stop")
-print(f"Language on tablet: TH / EN button  (current: {_current_lang.upper()})\n")
+print(f"\nReady to listen  [Space]=reset busy  Ctrl+C=stop")
+print(f"Edit config_en.json and save → takes effect on next question\n")
 
-_GREETINGS = {
-    "th": "สวัสดีครับ พร้อมรับคำถามแล้ว",
-    "en": "Hello! I am ready to answer your questions.",
-}
-GREETING = _GREETINGS.get(_current_lang, _GREETINGS["th"])
+GREETING = "Hello! I am ready to answer your questions."
 if speak(GREETING):
-    play_local()          # PC เล่นเฉพาะตอน debug=true (กันเสียงซ้อนกับลำโพงหุ่น)
+    pygame.mixer.music.load(SPEECH_FILE)
+    pygame.mixer.music.play()
+    while pygame.mixer.music.get_busy():
+        time.sleep(0.05)
 write_command(GREETING)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # MAIN LOOP
 # ══════════════════════════════════════════════════════════════════════════════
-_USER_LABEL  = {"th": "ผู้ใช้", "en": "User"}
-_THINK_LABEL = {"th": "Gemini กำลังคิด...", "en": "Gemini thinking..."}
-_STT_LABEL   = {"th": "กำลังถอดเสียง...", "en": "Transcribing..."}
-
 try:
     while True:
         load_config()
-
-        # ── Detect language change from tablet UI ─────────────────────────────
-        new_lang = read_lang()
-        if new_lang != _current_lang:
-            _current_lang = new_lang
-            clear_history()
-            greet = _GREETINGS.get(_current_lang, _GREETINGS["th"])
-            print(f"\n[Language → {_current_lang.upper()}]", flush=True)
-            write_status("wait")   # UI แสดง WAIT ระหว่าง generate TTS
-            if speak(greet):
-                play_local()       # PC เล่นเฉพาะตอน debug=true (กันเสียงซ้อนกับลำโพงหุ่น)
-            write_command(greet)   # pepper_main รับแล้วเปลี่ยนเป็น busy → drain → ready
-
-        silence_threshold = cfg(f"silence_threshold_{_current_lang}", 400)
+        silence_threshold = cfg("silence_threshold", 400)
 
         # Auto-clear history after 5 minutes of inactivity
         if _last_q_time and time.time() - _last_q_time > HISTORY_CLEAR_SECS:
@@ -420,12 +334,12 @@ try:
         if pepper_up:
             while read_status() == "busy":
                 was_busy = True
-                stream.read(CHUNK, exception_on_overflow=False)  # drain mic while Pepper speaks
                 if keyboard.is_pressed("space"):
                     write_status("ready")
                     clear_history()
                     was_busy = False
                     break
+                time.sleep(0.2)
             if was_busy or read_status() == "drain":
                 drain_buffer()
                 pre_buf.clear()
@@ -433,40 +347,38 @@ try:
 
         data = stream.read(CHUNK, exception_on_overflow=False)
         rms  = np.sqrt(np.mean(np.frombuffer(data, dtype=np.int16).astype(np.float32) ** 2))
-        print(f"\r[{_current_lang.upper()}][RMS: {rms:6.0f}]", end="", flush=True)
+        print(f"\r[RMS: {rms:6.0f}]", end="", flush=True)
         pre_buf.append(data)
         if rms < silence_threshold:
             continue
 
         audio = record_until_silence(list(pre_buf))
         pre_buf.clear()
-        print(_STT_LABEL.get(_current_lang, "Transcribing..."), flush=True)
+        print("Transcribing...", flush=True)
         segments, _ = whisper.transcribe(
-            audio,
-            language                   = _current_lang,
-            beam_size                  = cfg("beam_size", 1),
-            temperature                = 0,
-            no_speech_threshold        = 0.6,
-            condition_on_previous_text = False,
-            compression_ratio_threshold= 2.0,
-            vad_filter                 = True,
+            audio, language="en",
+            beam_size=cfg("beam_size", 1),
+            temperature=0,
+            no_speech_threshold=0.6,
+            condition_on_previous_text=False,
+            compression_ratio_threshold=2.0,
+            vad_filter=True,
         )
         confident = [s for s in segments if s.avg_logprob > -1.0 and s.no_speech_prob < 0.6]
         text = "".join(s.text for s in confident).strip()
 
         if text:
-            print(f"{_USER_LABEL.get(_current_lang,'User')}: {text}", flush=True)
+            print(f"User: {text}", flush=True)
             write_query(text)
-            print(_THINK_LABEL.get(_current_lang, "Thinking..."), flush=True)
+            print("Gemini thinking...", flush=True)
             t0     = time.time()
             answer = ask_gemini(text)
             print(f"Answer ({time.time()-t0:.1f}s): {answer}", flush=True)
-
             if re.search(r'\[SING\]', answer, re.IGNORECASE):
                 result = pick_next_song()
                 if result:
                     audio_path, display = result
-                    intro = _SING_INTRO.get(_current_lang, "")
+                    intro = "Sure thing! Here is a song for you."
                     if speak(intro):
                         if pepper_up:
                             write_status("busy")
@@ -474,21 +386,21 @@ try:
                         play_local()
                         if pepper_up:
                             while read_status() == "busy":
-                                stream.read(CHUNK, exception_on_overflow=False)  # drain mic during intro
+                                time.sleep(0.1)
                     if use_audio_file(audio_path):
                         if pepper_up:
                             write_status("busy")
                         write_command(display)
                         play_local()
                 else:
-                    speak_text = _SING_EMPTY.get(_current_lang, "")
+                    speak_text = "Sorry, no songs found in the songs folder."
                     if speak(speak_text):
                         if pepper_up:
                             write_status("busy")
                         write_command(speak_text)
                         play_local()
             else:
-                mp3_match  = re.search(r'([\w\-]+\.mp3)', answer, re.IGNORECASE)
+                mp3_match = re.search(r'([\w\-]+\.mp3)', answer, re.IGNORECASE)
                 audio_path = find_audio_file(mp3_match.group(1)) if mp3_match else None
                 if audio_path:
                     print(f"[play file] {audio_path}", flush=True)
@@ -498,10 +410,7 @@ try:
                             write_status("busy")
                         write_command(display)
                         play_local()
-
-            no_sing = not re.search(r'\[SING\]', answer, re.IGNORECASE)
-            no_mp3  = not re.search(r'[\w\-]+\.mp3', answer, re.IGNORECASE)
-            if no_sing and no_mp3:
+            if not re.search(r'\[SING\]', answer, re.IGNORECASE) and not re.search(r'[\w\-]+\.mp3', answer, re.IGNORECASE):
                 if speak(answer):
                     if pepper_up:
                         write_status("busy")

@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  background:#000;
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  align-items:center;
+  height:100vh;
+  font-family:sans-serif;
+  padding:20px;
+  gap:0;
+}
+.waves { display:flex; align-items:center; gap:10px; height:90px; }
+.bar {
+  width:14px;
+  background:linear-gradient(to top, #ff4e1a, #ffb347);
+  border-radius:8px;
+  animation:wave 0.7s ease-in-out infinite;
+}
+.bar:nth-child(1){animation-delay:0.00s}
+.bar:nth-child(2){animation-delay:0.10s}
+.bar:nth-child(3){animation-delay:0.20s}
+.bar:nth-child(4){animation-delay:0.30s}
+.bar:nth-child(5){animation-delay:0.20s}
+.bar:nth-child(6){animation-delay:0.10s}
+.bar:nth-child(7){animation-delay:0.00s}
+@keyframes wave {
+  0%,100%{height:14px}
+  50%{height:72px}
+}
+.speak-label {
+  color:#ff8c42;
+  font-size:30px;
+  font-weight:bold;
+  margin:20px 0 24px;
+  letter-spacing:2px;
+}
+.speech-text {
+  color:#fff;
+  font-size:32px;
+  text-align:center;
+  line-height:1.6;
+  max-width:90%;
+  padding:20px 28px;
+  border:2px solid #ff4e1a44;
+  border-radius:16px;
+  background:#ffffff0f;
+}
+.stop-btn {
+  position:fixed;
+  bottom:40px;
+  left:50%;
+  transform:translateX(-50%);
+  background:#c00;
+  color:#fff;
+  border:none;
+  border-radius:50px;
+  font-size:26px;
+  font-weight:bold;
+  padding:18px 60px;
+  cursor:pointer;
+  letter-spacing:2px;
+  box-shadow:0 0 24px #ff000066;
+}
+.stop-btn:active { background:#900; transform:translateX(-50%) scale(0.95); }
+</style>
+</head>
+<body>
+<div class="waves">
+  <div class="bar"></div><div class="bar"></div><div class="bar"></div>
+  <div class="bar"></div><div class="bar"></div><div class="bar"></div>
+  <div class="bar"></div>
+</div>
+<div class="speak-label" id="speak-label">&#x1F50A;&nbsp;Speaking...</div>
+<div class="speech-text">{TEXT}</div>
+<audio id="a"></audio>
+<button class="stop-btn" id="stop-btn" onclick="doStop()">&#x23F9; Stop</button>
+
+<script>
+function done(reason) {
+  var x = new XMLHttpRequest();
+  x.open('GET', '/audio_done' + (reason ? ('?r=' + encodeURIComponent(reason)) : ''), true);
+  x.send();
+  if (reason) {
+    document.getElementById('speak-label').innerHTML = '&#x26A0; ' + reason;
+  }
+}
+
+function doStop() {
+  var a = document.getElementById('a');
+  a.pause(); a.currentTime = 0;
+  var x = new XMLHttpRequest();
+  x.open('GET', '/reset', true);
+  x.send();
+}
+
+function beacon(m) {
+  var x = new XMLHttpRequest();
+  x.open('GET', '/log?m=' + encodeURIComponent(m), true);
+  x.send();
+}
+
+/* บอก pepper_main ว่าหน้าโหลด+ข้อความขึ้นจอแล้ว → ค่อยเริ่มเล่นเสียง */
+(function() {
+  var x = new XMLHttpRequest();
+  x.open('GET', '/page_ready', true);
+  x.send();
+})();
+
+/* TABLET_AUDIO=0 → เสียงเล่นที่ลำโพงหุ่น (ALAudioPlayer) หน้านี้โชว์ text อย่างเดียว */
+var TABLET_AUDIO = ('{TABLET_AUDIO}' === '1');
+
+var a = document.getElementById('a');
+a.volume = {VOL};
+a.setAttribute('playsinline', '');
+['loadstart','canplay','playing','stalled','waiting','pause','suspend'].forEach(function(ev){
+  a.addEventListener(ev, function(){
+    beacon(ev + ' t=' + a.currentTime.toFixed(1) + ' dur=' + (isNaN(a.duration)?'?':a.duration.toFixed(1)) + ' vol=' + a.volume + ' muted=' + a.muted);
+  }, false);
+});
+a.addEventListener('ended', function() { beacon('ended t=' + a.currentTime.toFixed(1)); done(); }, false);
+/* stalled = ดาวน์โหลดขาดกลางคัน → โหลดใหม่แล้วเล่นต่อจากจุดเดิม (server รองรับ Range/seek แล้ว) */
+var _recover = 0;
+a.addEventListener('stalled', function() {
+  if (!TABLET_AUDIO || _recover >= 3 || a.ended) return;
+  _recover++;
+  var resumeAt = a.currentTime;
+  setTimeout(function() {
+    if (a.ended || !a.paused && a.readyState >= 3) return;   /* ฟื้นเองแล้ว ไม่ต้องทำอะไร */
+    beacon('recover #' + _recover + ' from t=' + resumeAt.toFixed(1));
+    a.addEventListener('canplay', function once() {
+      a.removeEventListener('canplay', once, false);
+      try { a.currentTime = resumeAt; } catch (e) {}
+      tryPlay(false);
+    }, false);
+    a.src = '/speech.mp3?_=' + Date.now();
+    a.load();
+  }, 800);
+}, false);
+a.addEventListener('error', function() {                       /* load ไม่ได้ = เข้าไม่ถึง /speech.mp3 */
+  var err = a.error ? ('code ' + a.error.code) : '';
+  done('audio load error ' + err);
+}, false);
+function tryPlay(fromTouch) {
+  var p = a.play();
+  if (p && p.catch) {
+    p.catch(function(e) {
+      var name = (e && e.name) ? e.name : 'unknown';
+      /* autoplay ถูกบล็อก: รอ retry ทุก 400ms และให้แตะจอเพื่อเล่นได้ */
+      if (!fromTouch) {
+        document.getElementById('speak-label').innerHTML = '&#x1F507; แตะจอเพื่อเล่นเสียง (' + name + ')';
+        setTimeout(function() { tryPlay(false); }, 400);
+      } else {
+        done('autoplay blocked: ' + name);
+      }
+    });
+  }
+}
+if (TABLET_AUDIO) {
+  a.src = '/speech.mp3?_=' + Date.now();  /* cache-bust: บังคับดึงไฟล์ใหม่ทุกครั้ง */
+  /* แตะที่ใดก็ได้ = user gesture ปลดล็อก autoplay */
+  document.body.addEventListener('click', function() { tryPlay(true); }, false);
+  tryPlay(false);
+} else {
+  beacon('robot-speaker mode: tablet audio off');
+}
+</script>
+</body>
+</html>

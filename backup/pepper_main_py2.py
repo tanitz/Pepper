@@ -50,237 +50,19 @@ last_speech_text = u""
 speech_lock      = threading.Lock()
 audio_done_event = threading.Event()
 
+_HTML_DIR = _os.path.dirname(_os.path.abspath(__file__))
+
+def _load_html(filename):
+    with open(_os.path.join(_HTML_DIR, filename), "r") as f:
+        return f.read().decode("utf-8")
+
+HTML_PAGE      = _load_html("index.html")
+_PLAY_TEMPLATE = _load_html("play.html")
+
 def make_play_page(text=u""):
     safe_text = cgi.escape(text) if text else u""
-    vol = VOLUME / 100.0
-    return u"""<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8">
-<style>
-* {{ margin:0; padding:0; box-sizing:border-box; }}
-body {{
-    background:#000;
-    display:flex;
-    flex-direction:column;
-    justify-content:center;
-    align-items:center;
-    height:100vh;
-    font-family:sans-serif;
-    padding:20px;
-}}
-.waves {{ display:flex; align-items:center; gap:10px; height:120px; }}
-.bar {{
-    width:16px;
-    background:linear-gradient(to top,#ff4e1a,#ffb347);
-    border-radius:8px;
-    animation:wave 0.7s ease-in-out infinite;
-}}
-.bar:nth-child(1){{animation-delay:0.00s}}
-.bar:nth-child(2){{animation-delay:0.10s}}
-.bar:nth-child(3){{animation-delay:0.20s}}
-.bar:nth-child(4){{animation-delay:0.30s}}
-.bar:nth-child(5){{animation-delay:0.20s}}
-.bar:nth-child(6){{animation-delay:0.10s}}
-.bar:nth-child(7){{animation-delay:0.00s}}
-@keyframes wave {{
-    0%,100%{{height:18px}}
-    50%{{height:100px}}
-}}
-.label {{
-    color:#ff8c42;
-    font-size:36px;
-    font-weight:bold;
-    margin-top:24px;
-    letter-spacing:3px;
-}}
-.speech-text {{
-    color:#fff;
-    font-size:30px;
-    text-align:center;
-    line-height:1.6;
-    margin-top:28px;
-    max-width:90%;
-    padding:16px 24px;
-    border:2px solid #ff4e1a44;
-    border-radius:16px;
-    background:#ffffff0f;
-}}
-</style>
-</head>
-<body>
-<div class="waves">
-  <div class="bar"></div>
-  <div class="bar"></div>
-  <div class="bar"></div>
-  <div class="bar"></div>
-  <div class="bar"></div>
-  <div class="bar"></div>
-  <div class="bar"></div>
-</div>
-<div class="label">&#x1F50A;&nbsp;Speaking...</div>
-<div class="speech-text">{text}</div>
-<audio id="a" src="/speech.mp3" autoplay></audio>
-<script>
-function done(){{var x=new XMLHttpRequest();x.open('GET','/audio_done',true);x.send();}}
-var a=document.getElementById('a');
-a.volume={vol};
-a.addEventListener('ended',done,false);
-try{{a.play();}}catch(e){{}}
-</script>
-</body>
-</html>""".format(text=safe_text, vol=vol)
-
-HTML_PAGE = u"""<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8">
-<style>
-  * { margin:0; padding:0; box-sizing:border-box; }
-  body {
-    background:#000;
-    display:flex;
-    justify-content:center;
-    align-items:center;
-    height:100vh;
-    font-family:sans-serif;
-  }
-  .container {
-    display:flex;
-    flex-direction:column;
-    align-items:center;
-    gap:40px;
-  }
-  .circle {
-    width:280px;
-    height:280px;
-    border-radius:50%;
-    display:flex;
-    justify-content:center;
-    align-items:center;
-    transition: background 0.5s, box-shadow 0.5s;
-  }
-  .circle.listening {
-    background: radial-gradient(circle, #1a6fff, #003baa);
-    box-shadow: 0 0 60px #1a6fff, 0 0 120px #1a6fff55;
-    animation: pulse 2s infinite;
-  }
-  .circle.speaking {
-    background: radial-gradient(circle, #ff4e1a, #aa1a00);
-    box-shadow: 0 0 60px #ff4e1a, 0 0 120px #ff4e1a55;
-    animation: pulse 0.6s infinite;
-  }
-  @keyframes pulse {
-    0%   { transform: scale(1);    }
-    50%  { transform: scale(1.08); }
-    100% { transform: scale(1);    }
-  }
-  .icon {
-    font-size: 100px;
-  }
-  .label {
-    color: #fff;
-    font-size: 48px;
-    font-weight: bold;
-    letter-spacing: 4px;
-  }
-  .label.listening { color: #6af; }
-  .label.speaking  { color: #f84; }
-  .query-text {
-    color: #8df;
-    font-size: 24px;
-    text-align: center;
-    max-width: 85%;
-    line-height: 1.5;
-    min-height: 36px;
-  }
-  .last-text {
-    color: #ccc;
-    font-size: 24px;
-    text-align: center;
-    max-width: 85%;
-    line-height: 1.5;
-    min-height: 36px;
-  }
-  .reset-btn {
-    position: fixed;
-    top: 20px;
-    right: 20px;
-    background: #333;
-    color: #fff;
-    border: 2px solid #555;
-    border-radius: 8px;
-    font-size: 18px;
-    padding: 6px 16px;
-    cursor: pointer;
-  }
-  .reset-btn:active { background: #c00; border-color: #f44; }
-</style>
-</head>
-<body>
-<div class="container">
-  <div class="circle listening" id="circle">
-    <span class="icon" id="icon">&#x1F3A4;</span>
-  </div>
-  <div class="label listening" id="label">Listening...</div>
-  <div class="query-text" id="query-text"></div>
-  <div class="last-text" id="last-text"></div>
-</div>
-<button class="reset-btn" onclick="doReset()">&#x21BA; Reset</button>
-<script>
-var prevStatus = '';
-function doReset() {
-    var x = new XMLHttpRequest();
-    x.open('GET', '/reset', true);
-    x.send();
-}
-function fetchText(url, elemId) {
-    var x = new XMLHttpRequest();
-    x.open('GET', url, true);
-    x.onreadystatechange = function() {
-        if (x.readyState == 4 && x.status == 200) {
-            document.getElementById(elemId).innerHTML = x.responseText;
-        }
-    };
-    x.send();
-}
-function checkStatus() {
-    var xhr = new XMLHttpRequest();
-    xhr.open('GET', '/status', true);
-    xhr.onreadystatechange = function() {
-        if (xhr.readyState == 4 && xhr.status == 200) {
-            var status = xhr.responseText.trim();
-            var circle = document.getElementById('circle');
-            var icon   = document.getElementById('icon');
-            var label  = document.getElementById('label');
-            if (status === 'busy' || status === 'drain') {
-                circle.className = 'circle speaking';
-                icon.innerHTML   = '&#x1F50A;';
-                label.className  = 'label speaking';
-                label.innerHTML  = 'Speaking...';
-                if (prevStatus !== 'busy' && prevStatus !== 'drain') {
-                    fetchText('/query_text', 'query-text');
-                    document.getElementById('last-text').innerHTML = '';
-                }
-            } else {
-                circle.className = 'circle listening';
-                icon.innerHTML   = '&#x1F3A4;';
-                label.className  = 'label listening';
-                label.innerHTML  = 'Listening...';
-                if (prevStatus === 'busy' || prevStatus === 'drain') {
-                    fetchText('/last_text', 'last-text');
-                    document.getElementById('query-text').innerHTML = '';
-                }
-            }
-            prevStatus = status;
-        }
-    };
-    xhr.send();
-}
-setInterval(checkStatus, 500);
-</script>
-</body>
-</html>"""
+    vol = str(VOLUME / 100.0)
+    return _PLAY_TEMPLATE.replace(u"{TEXT}", safe_text).replace(u"{VOL}", vol)
 
 
 # ---- status / command file ----
@@ -429,6 +211,7 @@ class SpeechHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 pass
 
         elif self.path == "/reset":
+            audio_done_event.set()
             write_status("ready")
             self.send_response(200)
             self.send_header("Content-Type", "text/plain")
@@ -501,15 +284,15 @@ t.daemon = True
 t.start()
 print("HTTP server เริ่มแล้ว!")
 
+write_status("ready")
+clear_command()
+
 # เปิดหน้า UI บน tablet
 tablet = session.service("ALTabletService")
 tablet.hideWebview()
 time.sleep(1)
 tablet.showWebview("http://{}:{}/".format(COMPUTER_IP, STREAM_PORT))
 print("เปิด tablet แล้ว!")
-
-write_status("ready")
-clear_command()
 
 print("รอคำสั่งจาก listener_gemini_live.py...")
 

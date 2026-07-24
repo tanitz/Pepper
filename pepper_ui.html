@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    background:#000;
+    display:flex;
+    flex-direction:column;
+    justify-content:center;
+    align-items:center;
+    height:100vh;
+    font-family:sans-serif;
+    gap:0;
+    padding-bottom:110px;   /* กันที่ให้ปุ่ม Stop ด้านล่าง ไม่ให้ข้อความทับ */
+  }
+  .lang-bar {
+    position:fixed;
+    top:0; left:0; right:0;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    gap:16px;
+    padding:14px 20px;
+    background:#111;
+    border-bottom:1px solid #333;
+    z-index:10;
+  }
+  .lang-btn {
+    background:#222;
+    color:#aaa;
+    border:2px solid #444;
+    border-radius:10px;
+    font-size:20px;
+    font-weight:bold;
+    padding:8px 28px;
+    cursor:pointer;
+    letter-spacing:2px;
+    transition: all 0.2s;
+  }
+  .lang-btn.active {
+    background:#1a4fff;
+    color:#fff;
+    border-color:#1a6fff;
+    box-shadow:0 0 16px #1a6fff88;
+  }
+  .lang-btn:active { transform:scale(0.96); }
+  .container {
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:36px;
+    margin-top:80px;
+  }
+  .circle {
+    width:221px;    /* 260 - 15% */
+    height:221px;
+    border-radius:50%;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    transition: background 0.5s, box-shadow 0.5s;
+  }
+  .circle.listening {
+    background: radial-gradient(circle, #1a6fff, #003baa);
+    box-shadow: 0 0 60px #1a6fff, 0 0 120px #1a6fff55;
+    animation: pulse 2s infinite;
+  }
+  .circle.speaking {
+    background: radial-gradient(circle, #ff4e1a, #aa1a00);
+    box-shadow: 0 0 60px #ff4e1a, 0 0 120px #ff4e1a55;
+    animation: pulse 0.6s infinite;
+  }
+  .circle.waiting {
+    background: radial-gradient(circle, #aaaa00, #555500);
+    box-shadow: 0 0 60px #cccc00, 0 0 120px #cccc0044;
+    animation: pulse 1.2s infinite;
+  }
+  @keyframes pulse {
+    0%   { transform: scale(1);    }
+    50%  { transform: scale(1.08); }
+    100% { transform: scale(1);    }
+  }
+  .icon { font-size:76px; }   /* ย่อตามวงกลม */
+  .label {
+    color:#fff;
+    font-size:42px;
+    font-weight:bold;
+    letter-spacing:3px;
+  }
+  .label.listening { color:#6af; }
+  .label.speaking  { color:#f84; }
+  .label.waiting   { color:#ff0; }
+  .reset-btn {
+    position:absolute;
+    right:20px;
+    top:50%;
+    transform:translateY(-50%);
+    background:#333;
+    color:#fff;
+    border:2px solid #555;
+    border-radius:8px;
+    font-size:18px;
+    padding:8px 20px;
+    cursor:pointer;
+  }
+  .reset-btn:active { background:#c00; border-color:#f44; }
+  .speech-box {
+    display:none;
+    color:#fff;
+    font-size:26px;
+    text-align:center;
+    line-height:1.5;
+    max-width:90%;
+    max-height:24vh;        /* จำกัดความสูง ไม่ให้ยาวลงไปชนปุ่ม Stop */
+    overflow:hidden;
+    padding:16px 24px;
+    border:2px solid #ff4e1a44;
+    border-radius:16px;
+    background:#ffffff0f;
+    margin-top:24px;
+  }
+  .stop-btn {
+    display:none;
+    position:fixed;
+    bottom:28px;
+    left:50%;
+    transform:translateX(-50%);
+    background:#c00;
+    color:#fff;
+    border:none;
+    border-radius:50px;
+    font-size:24px;
+    font-weight:bold;
+    padding:14px 52px;
+    cursor:pointer;
+    letter-spacing:2px;
+    box-shadow:0 0 24px #ff000066;
+    z-index:10;
+  }
+  .stop-btn:active { background:#900; transform:translateX(-50%) scale(0.95); }
+</style>
+</head>
+<body>
+<div class="lang-bar">
+  <button id="btn-th" class="lang-btn active" onclick="setLang('th')">&#x1F1F9;&#x1F1ED;&nbsp;TH</button>
+  <button id="btn-en" class="lang-btn"        onclick="setLang('en')">&#x1F1FA;&#x1F1F8;&nbsp;EN</button>
+  <button class="reset-btn" onclick="doReset()">&#x21BA; Reset</button>
+</div>
+<div class="container">
+  <div class="circle listening" id="circle">
+    <span class="icon" id="icon">&#x1F3A4;</span>
+  </div>
+  <div class="label listening" id="label">&#x1F3A4;&nbsp;Listening...</div>
+  <div class="speech-box" id="speech-box"></div>
+</div>
+<button class="stop-btn" id="stop-btn" onclick="doReset()">&#x23F9; Stop</button>
+<script>
+var currentLang = 'th';
+var LABELS = {
+  th: { listen:'Listening...', speak:'Speaking...' },
+  en: { listen:'Listening...', speak:'Speaking...' }
+};
+
+function setLang(lang) {
+  var x = new XMLHttpRequest();
+  x.open('GET', '/set_lang?lang=' + lang, true);
+  x.send();
+  currentLang = lang;
+  updateLangButtons(lang);
+}
+
+function updateLangButtons(lang) {
+  document.getElementById('btn-th').className = 'lang-btn' + (lang === 'th' ? ' active' : '');
+  document.getElementById('btn-en').className = 'lang-btn' + (lang === 'en' ? ' active' : '');
+}
+
+function doReset() {
+  var x = new XMLHttpRequest();
+  x.open('GET', '/reset', true);
+  x.send();
+}
+
+/* แสดงข้อความที่ Pepper กำลังพูด + ยืนยันกลับด้วย seq เพื่อให้เสียงเริ่มหลังข้อความขึ้นจอ */
+var shownSeq = -1;
+function updateSpeech(busy) {
+  var box  = document.getElementById('speech-box');
+  var stop = document.getElementById('stop-btn');
+  stop.style.display = busy ? 'block' : 'none';
+  if (!busy) {
+    box.style.display = 'none';
+    box.textContent = '';
+    shownSeq = -1;
+    return;
+  }
+  var xhr = new XMLHttpRequest();
+  xhr.open('GET', '/speak_info', true);
+  xhr.onreadystatechange = function() {
+    if (xhr.readyState !== 4 || xhr.status !== 200) return;
+    var i = xhr.responseText.indexOf('\n');
+    if (i < 0) return;
+    var seq = parseInt(xhr.responseText.substring(0, i), 10);
+    var txt = xhr.responseText.substring(i + 1);
+    if (!txt) {                      /* ยังไม่มีข้อความของรอบนี้ → ไม่โชว์ของเก่าค้าง */
+      box.style.display = 'none';
+      box.textContent = '';
+      return;
+    }
+    box.textContent = txt;
+    box.style.display = 'block';
+    if (seq !== shownSeq) {
+      shownSeq = seq;
+      var p = new XMLHttpRequest();
+      p.open('GET', '/page_ready?seq=' + seq, true);
+      p.send();
+    }
+  };
+  xhr.send();
+}
+
+function checkStatus() {
+  var xhr = new XMLHttpRequest();
+  xhr.open('GET', '/status', true);
+  xhr.onreadystatechange = function() {
+    if (xhr.readyState !== 4 || xhr.status !== 200) return;
+    var status = xhr.responseText.trim();
+    var circle = document.getElementById('circle');
+    var icon   = document.getElementById('icon');
+    var label  = document.getElementById('label');
+    updateSpeech(status === 'busy');
+    if (status === 'wait' || status === 'drain') {
+      circle.className = 'circle waiting';
+      icon.innerHTML   = '&#x23F3;';
+      label.className  = 'label waiting';
+      label.innerHTML  = 'WAIT...';
+    } else if (status === 'busy') {
+      circle.className = 'circle speaking';
+      icon.innerHTML   = '&#x1F50A;';
+      label.className  = 'label speaking';
+      label.innerHTML  = '&#x1F50A;&nbsp;' + LABELS[currentLang].speak;
+    } else {
+      circle.className = 'circle listening';
+      icon.innerHTML   = '&#x1F3A4;';
+      label.className  = 'label listening';
+      label.innerHTML  = '&#x1F3A4;&nbsp;' + LABELS[currentLang].listen;
+    }
+  };
+  xhr.send();
+}
+
+function syncLang() {
+  var xhr = new XMLHttpRequest();
+  xhr.open('GET', '/lang', true);
+  xhr.onreadystatechange = function() {
+    if (xhr.readyState !== 4 || xhr.status !== 200) return;
+    var lang = xhr.responseText.trim();
+    if (lang === 'th' || lang === 'en') {
+      currentLang = lang;
+      updateLangButtons(lang);
+    }
+  };
+  xhr.send();
+}
+
+syncLang();
+setInterval(checkStatus, 300);
+setInterval(syncLang, 4000);
+</script>
+</body>
+</html>

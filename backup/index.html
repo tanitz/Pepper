@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    background:#000;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    height:100vh;
+    font-family:sans-serif;
+  }
+  .container {
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:40px;
+  }
+  .circle {
+    width:280px;
+    height:280px;
+    border-radius:50%;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    transition: background 0.5s, box-shadow 0.5s;
+  }
+  .circle.listening {
+    background: radial-gradient(circle, #1a6fff, #003baa);
+    box-shadow: 0 0 60px #1a6fff, 0 0 120px #1a6fff55;
+    animation: pulse 2s infinite;
+  }
+  .circle.speaking {
+    background: radial-gradient(circle, #ff4e1a, #aa1a00);
+    box-shadow: 0 0 60px #ff4e1a, 0 0 120px #ff4e1a55;
+    animation: pulse 0.6s infinite;
+  }
+  @keyframes pulse {
+    0%   { transform: scale(1);    }
+    50%  { transform: scale(1.08); }
+    100% { transform: scale(1);    }
+  }
+  .icon { font-size: 100px; }
+  .label {
+    color: #fff;
+    font-size: 48px;
+    font-weight: bold;
+    letter-spacing: 4px;
+  }
+  .label.listening { color: #6af; }
+  .label.speaking  { color: #f84; }
+  .reset-btn {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: #333;
+    color: #fff;
+    border: 2px solid #555;
+    border-radius: 8px;
+    font-size: 18px;
+    padding: 6px 16px;
+    cursor: pointer;
+  }
+  .reset-btn:active { background: #c00; border-color: #f44; }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="circle listening" id="circle">
+    <span class="icon" id="icon">&#x1F3A4;</span>
+  </div>
+  <div class="label listening" id="label">Listening...</div>
+</div>
+<button class="reset-btn" onclick="doReset()">&#x21BA; Reset</button>
+<script>
+function doReset() {
+    var x = new XMLHttpRequest();
+    x.open('GET', '/reset', true);
+    x.send();
+}
+function checkStatus() {
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', '/status', true);
+    xhr.onreadystatechange = function() {
+        if (xhr.readyState == 4 && xhr.status == 200) {
+            var status = xhr.responseText.trim();
+            var circle = document.getElementById('circle');
+            var icon   = document.getElementById('icon');
+            var label  = document.getElementById('label');
+            if (status === 'busy' || status === 'drain') {
+                circle.className = 'circle speaking';
+                icon.innerHTML   = '&#x1F50A;';
+                label.className  = 'label speaking';
+                label.innerHTML  = 'Speaking...';
+            } else {
+                circle.className = 'circle listening';
+                icon.innerHTML   = '&#x1F3A4;';
+                label.className  = 'label listening';
+                label.innerHTML  = 'Listening...';
+            }
+        }
+    };
+    xhr.send();
+}
+setInterval(checkStatus, 500);
+</script>
+</body>
+</html>
