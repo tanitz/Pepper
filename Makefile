@@ -20,7 +20,7 @@ help:
 	@echo "  make docker-check  Check Docker daemon + Dev Container files only"
 	@echo "  make setup         Bootstrap config + download Linux NAOqi SDK"
 	@echo "  make setup-sdk     Download pynaoqi linux64 into SDK_pynaoqi/linux64/"
-	@echo "  make setup-model   Download Thonburian Whisper CT2 model (~1.6 GB)"
+	@echo "  make setup-model   Download Thonburian Whisper CT2 model (~3.1 GB)"
 	@echo "  make setup-config  Create config/config.json from example if missing"
 	@echo ""
 	@echo "Typical flow:"
@@ -70,10 +70,15 @@ setup-sdk:
 	$(call run_bash,"$(ROOT)/scripts/download_pynaoqi_linux.sh")
 
 setup-model:
-	@echo "==> Downloading Thonburian Whisper CT2 (~1.6 GB)..."
+	@echo "==> Downloading Thonburian Whisper CT2 (~3.1 GB)..."
+	@if [ ! -f "$(ROOT)/model/thonburian-large-ct2/model.bin" ] \
+		&& [ -f "$(ROOT)/model/thonburian-large-ct2/model.safetensors" ]; then \
+		echo "==> Removing incompatible Transformers checkpoint..."; \
+		rm -f "$(ROOT)/model/thonburian-large-ct2/model.safetensors"; \
+	fi
 	@PY=$$(command -v python3.11 2>/dev/null || command -v python3); \
 	if [ -z "$$PY" ]; then echo "[FAIL] python3 not found"; exit 1; fi; \
-	$$PY -c "from huggingface_hub import snapshot_download; snapshot_download('biodatlab/whisper-th-large-v3-combined', local_dir='$(ROOT)/model/thonburian-large-ct2')"
+	$$PY -c "from huggingface_hub import snapshot_download; snapshot_download('CodeHardThailand/whisper-th-large-v3-combined-ct2', local_dir='$(ROOT)/model/thonburian-large-ct2')"
 	@test -f "$(ROOT)/model/thonburian-large-ct2/model.bin" \
 		&& echo "[OK] model.bin ready" \
 		|| (echo "[FAIL] model.bin still missing"; exit 1)

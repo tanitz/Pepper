@@ -17,14 +17,14 @@ else
   echo "==> config/config.json already exists — leaving it alone."
 fi
 
-# Whisper model (~1.6 GB) — do not auto-download (slow / can time out).
+# Whisper model (~3.1 GB) — do not auto-download (slow / can time out).
 MODEL_DIR="model/thonburian-large-ct2"
 MODEL_BIN="${MODEL_DIR}/model.bin"
 if [[ -f "${MODEL_BIN}" ]]; then
   echo "==> Whisper model already present."
 else
   echo "==> Whisper model not found. Download when ready with:"
-  echo "    python3.11 -c \"from huggingface_hub import snapshot_download; snapshot_download('biodatlab/whisper-th-large-v3-combined', local_dir='${MODEL_DIR}')\""
+  echo "    python3.11 -c \"from huggingface_hub import snapshot_download; snapshot_download('CodeHardThailand/whisper-th-large-v3-combined-ct2', local_dir='${MODEL_DIR}')\""
 fi
 
 # NAOqi SDK (Linux .so) — download if missing (~199 MB)

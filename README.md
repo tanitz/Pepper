@@ -72,12 +72,12 @@ cd Pepper
 pip install huggingface_hub
 python -c "
 from huggingface_hub import snapshot_download
-snapshot_download('biodatlab/whisper-th-large-v3-combined',
+snapshot_download('CodeHardThailand/whisper-th-large-v3-combined-ct2',
                   local_dir='model/thonburian-large-ct2')
 "
 ```
 
-> ขนาดประมาณ 1.6 GB
+> ขนาดประมาณ 3.1 GB
 
 ### 3. ดาวน์โหลด Pepper NAOqi SDK (Linux)
 
