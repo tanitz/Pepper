@@ -8,6 +8,10 @@ SDK_pynaoqi/pynaoqi/phrasebooks/
 SDK_pynaoqi/pynaoqi/lib/python2.7/
 SDK_pynaoqi/pynaoqi/lib/engines/
 
+# ── SDK (Linux): ดาวน์โหลดแยก ดู Setup ใน README ─────────────────────────────
+SDK_pynaoqi/linux64/
+SDK_pynaoqi/pynaoqi-python2.7-*-linux64*/
+
 # ── Model: model.bin ใหญ่ 782 MB → ต้อง download แยก ────────────────────────
 model/thonburian-large-ct2/model.bin
 model/thonburian-medium-ct2/
@@ -33,3 +37,5 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
+# ยกเว้น _qi.pyd ฯลฯ ของ SDK — ต้อง commit ตามหัวข้อบนสุดของไฟล์นี้
+!SDK_pynaoqi/pynaoqi/lib/*.pyd

@@ -72,16 +72,33 @@ snapshot_download('biodatlab/whisper-th-large-v3-combined',
 
 ### 3. ดาวน์โหลด Pepper NAOqi SDK
 
-1. ดาวน์โหลด **Python SDK 2.5.x** จาก [SoftBank Robotics Developer Center](https://developer.softbankrobotics.com/pepper-naoqi-25/downloads/pepper-naoqi-25-downloads-linux-mac-and-windows)
-   - เลือก: `pynaoqi-python2.7-2.5.x.x-win64-vs2015.zip` (Windows)
-2. แตกไฟล์แล้ว rename folder เป็น `SDK_pynaoqi`
-3. วางไว้ในโฟลเดอร์โปรเจกต์ให้ได้โครงสร้าง:
+SDK เป็น binary เฉพาะแพลตฟอร์ม — ต้องใช้ build ให้ตรงกับเครื่องที่รัน `pepper_main.py`
+โดยดาวน์โหลดจาก [SoftBank Robotics Developer Center](https://developer.softbankrobotics.com/pepper-naoqi-25/downloads/pepper-naoqi-25-downloads-linux-mac-and-windows)
+
+**Linux / Dev Container** (build ที่ commit ไว้ในรีโปเป็นของ Windows ใช้บน Linux ไม่ได้)
+
+1. ดาวน์โหลด `pynaoqi-python2.7-2.8.7.4-linux64-*.tar.gz`
+2. แตกไฟล์แล้ว rename folder เป็น `linux64` วางไว้ใต้ `SDK_pynaoqi/` ให้ได้โครงสร้าง:
 
 ```
 Pepper/
 └── SDK_pynaoqi/
-    └── pynaoqi/
-        └── lib/    ← qi module อยู่ที่นี่
+    └── linux64/
+        └── lib/
+            ├── libqi.so ...
+            └── python2.7/site-packages/    ← _qi.so + qi module อยู่ที่นี่
+```
+
+**Windows**
+
+1. ดาวน์โหลด `pynaoqi-python2.7-2.8.7.4-win64-vs2015.zip`
+2. แตกไฟล์แล้ววางให้ได้โครงสร้าง `SDK_pynaoqi/pynaoqi/lib/` (ต้องมี `_qi.pyd`)
+
+`naoqi_path.py` จะเลือก path ให้อัตโนมัติตาม OS หากวางไว้ที่อื่น ให้ตั้ง env `PYNAOQI_LIB`
+ชี้ไปยัง folder ที่มี `_qi.so` / `_qi.pyd` โดยตรง ตรวจสอบด้วย:
+
+```bash
+python2 naoqi_path.py
 ```
 
 ### 4. ติดตั้ง Python 3 dependencies

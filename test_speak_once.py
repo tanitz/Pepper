@@ -4,7 +4,9 @@
 # Run: python test_speak_once.py   (Python 2 / qi framework เหมือน pepper_main.py)
 
 import sys, os as _os
-sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "SDK_pynaoqi", "pynaoqi", "lib"))
+sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+from naoqi_path import add_sdk_to_path
+add_sdk_to_path()
 
 import qi
 import socket

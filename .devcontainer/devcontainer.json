@@ -24,8 +24,8 @@
   },
 
   "containerEnv": {
-    "PYTHONPATH": "/workspaces/Pepper/SDK_pynaoqi/pynaoqi/lib",
-    "LD_LIBRARY_PATH": "/workspaces/Pepper/SDK_pynaoqi/pynaoqi/lib"
+    "PYTHONPATH": "/workspaces/Pepper/SDK_pynaoqi/linux64/lib/python2.7/site-packages",
+    "LD_LIBRARY_PATH": "/workspaces/Pepper/SDK_pynaoqi/linux64/lib"
   },
 
   "postCreateCommand": "bash .devcontainer/post-create.sh",
