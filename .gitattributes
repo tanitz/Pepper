@@ -1,0 +1,13 @@
+# Force LF for files executed inside the Linux Dev Container.
+# Windows clones with core.autocrlf=true otherwise break `set -o pipefail`.
+* text=auto eol=lf
+*.sh text eol=lf
+Makefile text eol=lf
+*.mk text eol=lf
+Dockerfile text eol=lf
+.devcontainer/** text eol=lf
+
+# Windows helper scripts may keep CRLF
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf

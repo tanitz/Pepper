@@ -28,7 +28,7 @@
     "LD_LIBRARY_PATH": "/workspaces/Pepper/SDK_pynaoqi/linux64/lib"
   },
 
-  "postCreateCommand": "bash .devcontainer/post-create.sh",
+  "postCreateCommand": "bash -c 'find .devcontainer scripts -name \"*.sh\" -print0 | xargs -0 sed -i \"s/\\r$//\"; bash .devcontainer/post-create.sh'",
 
   "customizations": {
     "vscode": {

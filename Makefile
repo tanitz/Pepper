@@ -5,6 +5,12 @@
 
 ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 
+# Strip Windows CRLF so bash does not fail on `set -o pipefail` after a Windows checkout.
+define run_bash
+	@sed -i 's/\r$$//' $(1)
+	@bash $(1)
+endef
+
 help:
 	@echo "Pepper Makefile"
 	@echo ""
@@ -24,7 +30,7 @@ help:
 	@echo "  4) fix FAIL items / make setup*"
 
 check status ready:
-	@bash "$(ROOT)/scripts/check_ready.sh"
+	$(call run_bash,"$(ROOT)/scripts/check_ready.sh")
 
 docker-check:
 	@echo "== Docker daemon =="
@@ -61,7 +67,7 @@ setup: setup-config setup-sdk
 	@echo "Then: make check"
 
 setup-sdk:
-	@bash "$(ROOT)/scripts/download_pynaoqi_linux.sh"
+	$(call run_bash,"$(ROOT)/scripts/download_pynaoqi_linux.sh")
 
 setup-model:
 	@echo "==> Downloading Thonburian Whisper CT2 (~1.6 GB)..."
