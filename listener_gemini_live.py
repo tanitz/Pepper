@@ -329,7 +329,16 @@ def record_until_silence(pre_frames=None):
 load_config()
 _current_lang = read_lang()
 print(f"Starting language: {_current_lang.upper()}", flush=True)
-pygame.mixer.init()
+try:
+    pygame.mixer.init()
+except pygame.error as e:
+    # Dev containers / headless hosts often have no ALSA device.
+    # Dummy driver lets TTS write speech.mp3; local play stays silent.
+    print(f"[audio] mixer init failed ({e}); using SDL dummy driver", flush=True)
+    os.environ["SDL_AUDIODRIVER"] = "dummy"
+    pygame.mixer.quit()
+    pygame.mixer.init()
+
 
 cuda_count = ctranslate2.get_cuda_device_count()
 use_cuda   = cuda_count > 0
