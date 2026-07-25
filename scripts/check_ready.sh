@@ -166,6 +166,17 @@ if [[ "$IN_CONTAINER" -eq 1 ]]; then
       fail "cannot import ${pkg} — re-run post-create or: pip install -r .devcontainer/requirements.txt"
     fi
   done
+  if "$PY3" -c "import ctranslate2" >/dev/null 2>&1; then
+    ok "import ctranslate2"
+    CUDA_N="$($PY3 -c 'import ctranslate2; print(ctranslate2.get_cuda_device_count())' 2>/dev/null || echo 0)"
+    if [[ "$CUDA_N" -gt 0 ]]; then
+      ok "CUDA devices: $CUDA_N (Whisper will use GPU)"
+    else
+      warn "CUDA devices: 0 — Whisper will use CPU (install NVIDIA driver + rebuild with --gpus all for GPU)"
+    fi
+  else
+    fail "cannot import ctranslate2 — pip install -r .devcontainer/requirements.txt"
+  fi
   echo ""
 fi
 

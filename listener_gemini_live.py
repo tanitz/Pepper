@@ -6,23 +6,48 @@
 # pepper_main.py writes the choice to lang.txt; this script reacts immediately.
 # Config hot-reload: edit config/config.json and save → takes effect on the next question.
 
-# ── 1. CUDA DLL preload (must be before other imports) ────────────────────────
-import os, ctypes, site as _site
+# ── 1. CUDA library preload (must be before other imports) ────────────────────
+# Windows: nvidia-*-cu12 ships DLLs under nvidia/<pkg>/bin
+# Linux:   same packages ship .so under nvidia/<pkg>/lib
+import os, sys, ctypes, site as _site
 
-_SITES = _site.getsitepackages() if hasattr(_site, "getsitepackages") else []
+_SITES = list(_site.getsitepackages()) if hasattr(_site, "getsitepackages") else []
+_user_site = _site.getusersitepackages()
+if isinstance(_user_site, str) and _user_site not in _SITES:
+    _SITES.append(_user_site)
+
+_IS_WIN = sys.platform == "win32"
+_LIB_SUBDIR = "bin" if _IS_WIN else "lib"
+_CUDA_LIBS = (
+    ["cublas64_12.dll", "cublasLt64_12.dll", "cudnn64_9.dll", "cudnn_ops64_9.dll"]
+    if _IS_WIN else
+    ["libcublas.so.12", "libcublasLt.so.12", "libcudnn.so.9", "libcudnn_ops.so.9"]
+)
+
 for _SITE in _SITES:
-    for _pkg in ["cublas", "cudnn"]:
-        _d = os.path.join(_SITE, "nvidia", _pkg, "bin")
-        if os.path.isdir(_d):
+    for _pkg in ("cublas", "cudnn"):
+        _d = os.path.join(_SITE, "nvidia", _pkg, _LIB_SUBDIR)
+        if not os.path.isdir(_d):
+            continue
+        if _IS_WIN:
             os.add_dll_directory(_d)
-            os.environ["PATH"] = _d + ";" + os.environ.get("PATH", "")
-for _dll in ["cublas64_12.dll", "cublasLt64_12.dll", "cudnn64_9.dll", "cudnn_ops64_9.dll"]:
+            os.environ["PATH"] = _d + os.pathsep + os.environ.get("PATH", "")
+        else:
+            os.environ["LD_LIBRARY_PATH"] = _d + os.pathsep + os.environ.get("LD_LIBRARY_PATH", "")
+
+for _lib in _CUDA_LIBS:
     for _SITE in _SITES:
-        for _pkg in ["cublas", "cudnn"]:
-            _p = os.path.join(_SITE, "nvidia", _pkg, "bin", _dll)
-            if os.path.exists(_p):
-                try: ctypes.CDLL(_p)
-                except: pass
+        for _pkg in ("cublas", "cudnn"):
+            _p = os.path.join(_SITE, "nvidia", _pkg, _LIB_SUBDIR, _lib)
+            if not os.path.exists(_p):
+                continue
+            try:
+                if _IS_WIN:
+                    ctypes.CDLL(_p)
+                else:
+                    ctypes.CDLL(_p, mode=ctypes.RTLD_GLOBAL)
+            except OSError:
+                pass
 
 # ── 2. Imports ────────────────────────────────────────────────────────────────
 import json, datetime, time, shutil, re, asyncio, random
@@ -343,6 +368,13 @@ except pygame.error as e:
 cuda_count = ctranslate2.get_cuda_device_count()
 use_cuda   = cuda_count > 0
 print(f"CUDA devices: {cuda_count}  →  Using: {'GPU (CUDA)' if use_cuda else 'CPU'}", flush=True)
+if not use_cuda:
+    print(
+        "  [tip] For GPU: install nvidia-cublas-cu12 nvidia-cudnn-cu12, "
+        "and ensure the NVIDIA driver is visible (nvidia-smi). "
+        "In Dev Container: rebuild with GPU / --gpus all.",
+        flush=True,
+    )
 
 _MODEL_PATH = cfg("whisper_model_path") or "large-v3"
 print(f"Loading Whisper model: {_MODEL_PATH}", flush=True)

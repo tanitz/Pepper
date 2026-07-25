@@ -114,12 +114,15 @@ python2 naoqi_path.py
 pip install faster-whisper google-generativeai pyaudio pygame keyboard numpy scipy
 ```
 
-สำหรับ GPU CUDA (optional):
+สำหรับ GPU CUDA (optional) — ติดตั้งแล้วใน `.devcontainer/requirements.txt`:
 
 ```bash
-pip install ctranslate2
-pip install nvidia-cublas-cu12 nvidia-cudnn-cu12
+pip install ctranslate2 nvidia-cublas-cu12 nvidia-cudnn-cu12
 ```
+
+เมื่อรัน `listener_gemini_live.py` จะ auto-detect GPU (`CUDA devices: N → Using: GPU (CUDA)`).
+
+**Dev Container + GPU:** host ต้องมี NVIDIA driver + [nvidia-container-toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) แล้ว Rebuild Container (`runArgs: --gpus all` ใน `devcontainer.json`). ตรวจด้วย `nvidia-smi` ภายใน container.
 
 ### 5. ตั้งค่า config
 

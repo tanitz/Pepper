@@ -4,9 +4,20 @@ set -euo pipefail
 
 cd /workspaces/Pepper 2>/dev/null || cd "$(dirname "$0")/.."
 
-echo "==> Installing Python 3 dependencies..."
+echo "==> Installing Python 3 dependencies (incl. CUDA libs for Whisper)..."
 python3.11 -m pip install --upgrade pip
 python3.11 -m pip install -r .devcontainer/requirements.txt
+
+# Report GPU visibility (optional — falls back to CPU if none)
+if command -v nvidia-smi >/dev/null 2>&1; then
+  echo "==> NVIDIA driver visible:"
+  nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv,noheader || true
+else
+  echo "==> nvidia-smi not found — Whisper will use CPU (OK if this host has no GPU)."
+fi
+if python3.11 -c "import ctranslate2; n=ctranslate2.get_cuda_device_count(); print(f'==> ctranslate2 CUDA devices: {n}'); raise SystemExit(0 if n>0 else 0)" 2>/dev/null; then
+  :
+fi
 
 # Config bootstrap (never overwrite an existing key)
 if [[ ! -f config/config.json ]]; then

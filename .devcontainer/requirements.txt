@@ -9,3 +9,6 @@ scipy
 ctranslate2
 edge-tts
 huggingface_hub
+# CUDA runtime libs for Whisper CT2 (GPU). Safe on CPU-only hosts; unused if no GPU.
+nvidia-cublas-cu12
+nvidia-cudnn-cu12

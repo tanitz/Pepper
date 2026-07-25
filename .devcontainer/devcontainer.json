@@ -15,6 +15,13 @@
     "ghcr.io/devcontainers/features/git:1": {}
   },
 
+  // Prefer NVIDIA GPU when the host has one (NVIDIA driver + nvidia-container-toolkit).
+  // On CPU-only hosts this is ignored; remove runArgs if container start fails without a GPU.
+  "hostRequirements": {
+    "gpu": "optional"
+  },
+  "runArgs": ["--gpus", "all"],
+
   "forwardPorts": [8080],
   "portsAttributes": {
     "8080": {
@@ -25,7 +32,9 @@
 
   "containerEnv": {
     "PYTHONPATH": "/workspaces/Pepper/SDK_pynaoqi/linux64/lib/python2.7/site-packages",
-    "LD_LIBRARY_PATH": "/workspaces/Pepper/SDK_pynaoqi/linux64/lib"
+    "LD_LIBRARY_PATH": "/workspaces/Pepper/SDK_pynaoqi/linux64/lib",
+    "NVIDIA_VISIBLE_DEVICES": "all",
+    "NVIDIA_DRIVER_CAPABILITIES": "compute,utility"
   },
 
   "postCreateCommand": "bash -c 'find .devcontainer scripts -name \"*.sh\" -print0 | xargs -0 sed -i \"s/\\r$//\"; bash .devcontainer/post-create.sh'",
