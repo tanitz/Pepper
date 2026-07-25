@@ -27,15 +27,18 @@ else
   echo "    python3.11 -c \"from huggingface_hub import snapshot_download; snapshot_download('biodatlab/whisper-th-large-v3-combined', local_dir='${MODEL_DIR}')\""
 fi
 
-# NAOqi SDK check (Linux .so required; the committed Windows .dll build will not work here)
+# NAOqi SDK (Linux .so) — download if missing (~199 MB)
 if python2 naoqi_path.py >/dev/null 2>&1; then
   echo "==> Linux NAOqi SDK found at $(python2 naoqi_path.py)"
 else
-  echo "!! WARNING: Linux NAOqi SDK not found — pepper_main.py will not start."
-  echo "   The SDK committed to this repo is the Windows build (*.dll)."
-  echo "   Download 'pynaoqi-python2.7-2.8.7.4-linux64' from the SoftBank Robotics"
-  echo "   Developer Center and extract it so this path exists:"
-  echo "     SDK_pynaoqi/linux64/lib/python2.7/site-packages/_qi.so"
+  echo "==> Linux NAOqi SDK not found — downloading..."
+  if bash scripts/download_pynaoqi_linux.sh; then
+    echo "==> Linux NAOqi SDK ready at $(python2 naoqi_path.py)"
+  else
+    echo "!! WARNING: SDK download failed — pepper_main.py will not start."
+    echo "   Retry with: bash scripts/download_pynaoqi_linux.sh"
+    echo "   Expected: SDK_pynaoqi/linux64/lib/python2.7/site-packages/_qi.so"
+  fi
 fi
 
 echo ""

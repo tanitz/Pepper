@@ -20,10 +20,9 @@ Pepper/
 ├── system_prompt.txt         ← system prompt ของ Gemini (แก้ได้ขณะรัน)
 ├── run_listener.ps1          ← script รัน listener (Windows PowerShell)
 │
-├── SDK_pynaoqi/              ← Pepper NAOqi SDK  [ดาวน์โหลดแยก ดู Setup ด้านล่าง]
-│   └── pynaoqi/
-│       └── lib/
-│           └── qi, ...
+├── SDK_pynaoqi/              ← Pepper NAOqi SDK (Linux)  [ดาวน์โหลดแยก ดู Setup]
+│   └── linux64/
+│       └── lib/python2.7/site-packages/   ← _qi.so + qi
 │
 └── model/                    ← STT model  [ดาวน์โหลดแยก ดู Setup ด้านล่าง]
     └── thonburian-large-ct2/
@@ -70,15 +69,17 @@ snapshot_download('biodatlab/whisper-th-large-v3-combined',
 
 > ขนาดประมาณ 1.6 GB
 
-### 3. ดาวน์โหลด Pepper NAOqi SDK
+### 3. ดาวน์โหลด Pepper NAOqi SDK (Linux)
 
-SDK เป็น binary เฉพาะแพลตฟอร์ม — ต้องใช้ build ให้ตรงกับเครื่องที่รัน `pepper_main.py`
-โดยดาวน์โหลดจาก [SoftBank Robotics Developer Center](https://developer.softbankrobotics.com/pepper-naoqi-25/downloads/pepper-naoqi-25-downloads-linux-mac-and-windows)
+รีโปนี้ใช้ **pynaoqi Python 2.7 linux64 2.8.7.4** (ไฟล์ใหญ่ ~670 MB หลังแตก — ไม่ commit ใน git)
 
-**Linux / Dev Container** (build ที่ commit ไว้ในรีโปเป็นของ Windows ใช้บน Linux ไม่ได้)
+ดาวน์โหลดจาก [snc-iiot/nao6-doc-sdk](https://github.com/snc-iiot/nao6-doc-sdk) แล้วติดตั้งด้วยสคริปต์:
 
-1. ดาวน์โหลด `pynaoqi-python2.7-2.8.7.4-linux64-*.tar.gz`
-2. แตกไฟล์แล้ว rename folder เป็น `linux64` วางไว้ใต้ `SDK_pynaoqi/` ให้ได้โครงสร้าง:
+```bash
+bash scripts/download_pynaoqi_linux.sh
+```
+
+หรือทำมือ: ดาวน์โหลด `pynaoqi-python2.7-2.8.7.4-linux64-*.tar.gz` แล้วแตกเป็น:
 
 ```
 Pepper/
@@ -89,17 +90,13 @@ Pepper/
             └── python2.7/site-packages/    ← _qi.so + qi module อยู่ที่นี่
 ```
 
-**Windows**
-
-1. ดาวน์โหลด `pynaoqi-python2.7-2.8.7.4-win64-vs2015.zip`
-2. แตกไฟล์แล้ววางให้ได้โครงสร้าง `SDK_pynaoqi/pynaoqi/lib/` (ต้องมี `_qi.pyd`)
-
-`naoqi_path.py` จะเลือก path ให้อัตโนมัติตาม OS หากวางไว้ที่อื่น ให้ตั้ง env `PYNAOQI_LIB`
-ชี้ไปยัง folder ที่มี `_qi.so` / `_qi.pyd` โดยตรง ตรวจสอบด้วย:
+ตรวจสอบด้วย:
 
 ```bash
 python2 naoqi_path.py
 ```
+
+ถ้าวาง SDK ที่อื่น ให้ตั้ง env `PYNAOQI_LIB` ชี้ไปยัง folder ที่มี `_qi.so` โดยตรง
 
 ### 4. ติดตั้ง Python 3 dependencies
 

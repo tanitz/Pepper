@@ -14,9 +14,9 @@ _ROOT = os.path.dirname(os.path.abspath(__file__))
 _SDK = os.path.join(_ROOT, "SDK_pynaoqi")
 
 _DOWNLOAD_HINT = (
-    "Download 'pynaoqi-python2.7-2.8.7.4-linux64' from the SoftBank Robotics\n"
-    "Developer Center and extract it so that this path exists:\n"
-    "    SDK_pynaoqi/linux64/lib/python2.7/site-packages/_qi.so"
+    "Run: bash scripts/download_pynaoqi_linux.sh\n"
+    "(or extract pynaoqi-python2.7-2.8.7.4-linux64 so this path exists:\n"
+    "    SDK_pynaoqi/linux64/lib/python2.7/site-packages/_qi.so)"
 )
 
 
@@ -62,8 +62,7 @@ def find_sdk_lib():
 
     raise ImportError(
         "No %s found under SDK_pynaoqi/ (searched: %s).\n"
-        "The SDK committed to this repository is the Windows build (*.dll) and\n"
-        "cannot be loaded on %s.\n%s"
+        "Platform: %s\n%s"
         % (
             _native_module_glob(),
             ", ".join(os.path.relpath(p, _ROOT) for p in _patterns()),
