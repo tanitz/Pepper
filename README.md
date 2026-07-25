@@ -47,6 +47,16 @@ Pepper/
 
 ## Setup
 
+### 0. Check readiness (Docker / Dev Container)
+
+```bash
+make docker-check   # Docker daemon + Dev Container files
+make check          # full READY / NOT READY report
+make setup          # config + NAOqi SDK download
+```
+
+`make check` exits `0` only when ready to run.
+
 ### 1. Clone repo
 
 ```bash
