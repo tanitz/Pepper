@@ -4,9 +4,10 @@ SDK_pynaoqi/pynaoqi-python2.7-*-linux64*/
 SDK_pynaoqi/*.tar.gz
 
 # ── Model: model.bin ใหญ่ 782 MB → ต้อง download แยก ────────────────────────
-model/thonburian-large-ct2/model.bin
-model/thonburian-medium-ct2/
-model/model/
+# model/thonburian-large-ct2/model.bin
+# model/thonburian-medium-ct2/
+# model/model/
+model/*
 
 # ── Config (copy from config.example.json and fill in your API key) ──────────
 config.json
