@@ -12,11 +12,14 @@ PIP  := $(VENV)/bin/pip
 REQ  := $(ROOT)/requirements.txt
 REQ_CUDA := $(ROOT)/requirements-cuda.txt
 
-# Prefer python3.11; fall back to python3 if it is already 3.11.x
+# Prefer newest Python 3.11–3.14 available on the host
 HOST_PYTHON := $(shell \
-	if command -v python3.11 >/dev/null 2>&1; then command -v python3.11; \
-	elif command -v python3 >/dev/null 2>&1 && python3 -c 'import sys; raise SystemExit(0 if sys.version_info[:2]==(3,11) else 1)' 2>/dev/null; then command -v python3; \
-	else echo ""; fi)
+	for c in python3.14 python3.13 python3.12 python3.11 python3; do \
+		if command -v $$c >/dev/null 2>&1; then \
+			$$c -c 'import sys; raise SystemExit(0 if (3,11)<=sys.version_info[:2]<=(3,14) else 1)' 2>/dev/null \
+				&& command -v $$c && break; \
+		fi; \
+	done)
 
 UNAME_S := $(shell uname -s)
 
@@ -74,9 +77,9 @@ setup: setup-venv install setup-config
 
 setup-venv:
 	@if [ -z "$(HOST_PYTHON)" ]; then \
-		echo "[FAIL] Python 3.11 not found."; \
-		echo "       macOS:  brew install python@3.11"; \
-		echo "       Ubuntu: sudo apt install python3.11 python3.11-venv python3.11-dev"; \
+		echo "[FAIL] Python 3.11-3.14 not found."; \
+		echo "       macOS:  brew install python@3.14   # or python@3.11"; \
+		echo "       Ubuntu: sudo apt install python3.12 python3.12-venv"; \
 		exit 1; \
 	fi
 	@if [ ! -x "$(PY)" ]; then \
@@ -96,8 +99,7 @@ install: setup-venv
 	@echo "[OK] Python 3 packages installed into .venv"
 	@if [ "$(UNAME_S)" = "Darwin" ]; then \
 		echo ""; \
-		echo "Tip (macOS audio): if pyaudio fails to import, run:"; \
-		echo "  brew install portaudio && make install"; \
+		echo "Tip (macOS audio): mic uses sounddevice. If needed: brew install portaudio && make install"; \
 	fi
 
 install-cuda: setup-venv

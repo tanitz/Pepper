@@ -60,44 +60,48 @@ Activate manually:
 }
 
 function Resolve-HostPython {
-    # Require Python 3.11.x only. 3.12+ (especially 3.14) often has no
-    # prebuilt wheels for pygame/pyaudio, so pip tries to compile and fails.
+    # Prefer newest available 3.11-3.14 (pygame-ce + sounddevice support 3.14).
+    $candidates = @()
     if (Get-Command py -ErrorAction SilentlyContinue) {
-        foreach ($arg in @("-3.11")) {
+        foreach ($arg in @("-3.14", "-3.13", "-3.12", "-3.11", "-3")) {
             try {
                 $ver = & py $arg -c "import sys; print('%d.%d' % sys.version_info[:2])" 2>$null
                 if ($LASTEXITCODE -eq 0 -and $ver) {
                     $parts = $ver.Trim().Split(".")
-                    if ([int]$parts[0] -eq 3 -and [int]$parts[1] -eq 11) {
-                        return @{ Exe = "py"; Args = @($arg) }
+                    $maj = [int]$parts[0]; $min = [int]$parts[1]
+                    if ($maj -eq 3 -and $min -ge 11 -and $min -le 14) {
+                        $candidates += @{ Exe = "py"; Args = @($arg); Major = $maj; Minor = $min }
                     }
                 }
             } catch { }
         }
     }
-    foreach ($name in @("python3.11")) {
+    foreach ($name in @("python3.14", "python3.13", "python3.12", "python3.11", "python")) {
         if (Get-Command $name -ErrorAction SilentlyContinue) {
             try {
                 $ver = & $name -c "import sys; print('%d.%d' % sys.version_info[:2])" 2>$null
                 if ($LASTEXITCODE -eq 0 -and $ver) {
                     $parts = $ver.Trim().Split(".")
-                    if ([int]$parts[0] -eq 3 -and [int]$parts[1] -eq 11) {
-                        return @{ Exe = $name; Args = @() }
+                    $maj = [int]$parts[0]; $min = [int]$parts[1]
+                    if ($maj -eq 3 -and $min -ge 11 -and $min -le 14) {
+                        $candidates += @{ Exe = $name; Args = @(); Major = $maj; Minor = $min }
                     }
                 }
             } catch { }
         }
     }
-    return $null
+    if ($candidates.Count -eq 0) { return $null }
+    return ($candidates | Sort-Object { $_.Minor } -Descending | Select-Object -First 1)
 }
 
 function Ensure-Venv {
     $hostPy = Resolve-HostPython
     if (-not $hostPy) {
         throw @"
-Python 3.11 not found (required). Do not use Python 3.12/3.13/3.14 for this project.
-Install 3.11, then recreate the venv:
-  winget install Python.Python.3.11
+Python 3.11-3.14 not found.
+Install e.g.:
+  winget install Python.Python.3.14
+Then:
   powershell -ExecutionPolicy Bypass -File .\setup.ps1 clean-venv
   powershell -ExecutionPolicy Bypass -File .\setup.ps1
 "@
@@ -105,9 +109,17 @@ Install 3.11, then recreate the venv:
 
     if (Test-Path -LiteralPath $VenvPy) {
         $existing = & $VenvPy -c "import sys; print('%d.%d' % sys.version_info[:2])" 2>$null
-        if (-not $existing -or $existing.ToString().Trim() -ne "3.11") {
+        $ok = $false
+        if ($existing) {
+            $parts = $existing.ToString().Trim().Split(".")
+            if ($parts.Count -ge 2) {
+                $min = [int]$parts[1]
+                if ([int]$parts[0] -eq 3 -and $min -ge 11 -and $min -le 14) { $ok = $true }
+            }
+        }
+        if (-not $ok) {
             throw @"
-Existing .venv is Python $($existing) but this project needs 3.11.
+Existing .venv is Python $($existing) but this project needs 3.11-3.14.
 Recreate it:
   powershell -ExecutionPolicy Bypass -File .\setup.ps1 clean-venv
   powershell -ExecutionPolicy Bypass -File .\setup.ps1
@@ -139,7 +151,7 @@ function Install-Requirements {
     if ($LASTEXITCODE -ne 0) { throw "pip install failed" }
     Write-Ok "Python 3 packages installed into .venv"
     Write-Host ""
-    Write-Host "Tip (Windows audio): if pyaudio fails, install a PortAudio wheel, then re-run: .\setup.ps1 install"
+    Write-Host "Tip (Windows audio): mic uses sounddevice (PortAudio). If open fails, check mic permissions in Windows Settings."
 }
 
 function Install-Cuda {
@@ -334,7 +346,7 @@ function Invoke-Check {
 
     Write-Host "== Python 3 packages =="
     if (Test-Path -LiteralPath $VenvPy) {
-        foreach ($pkg in @("faster_whisper", "google.generativeai", "pyaudio", "pygame", "numpy", "scipy")) {
+        foreach ($pkg in @("faster_whisper", "google.generativeai", "sounddevice", "pygame", "numpy", "scipy")) {
             & $VenvPy -c "import $pkg" 2>$null | Out-Null
             if ($LASTEXITCODE -eq 0) { Ok "import $pkg" }
             else { Fail "cannot import $pkg - run: .\setup.ps1 install" }

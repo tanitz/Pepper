@@ -123,7 +123,7 @@ echo ""
 # ── Python 3 packages (venv) ─────────────────────────────────────────────────
 echo "== Python 3 packages =="
 if [[ -x "$VENV_PY" ]]; then
-  for pkg in faster_whisper google.generativeai pyaudio pygame numpy scipy; do
+  for pkg in faster_whisper google.generativeai sounddevice pygame numpy scipy; do
     if "$VENV_PY" -c "import ${pkg}" >/dev/null 2>&1; then
       ok "import ${pkg}"
     else

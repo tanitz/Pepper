@@ -1,8 +1,9 @@
-# Python 3.11 only (Windows/macOS/Linux). Avoid 3.12+ — pygame/pyaudio often lack wheels.
+# Python 3.11–3.14 (Windows/macOS/Linux)
+# pygame-ce replaces pygame (3.14 wheels); sounddevice replaces pyaudio (3.14 wheels).
 faster-whisper
 google-generativeai
-pyaudio
-pygame
+sounddevice
+pygame-ce
 keyboard
 numpy
 scipy

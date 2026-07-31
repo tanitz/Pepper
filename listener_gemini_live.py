@@ -52,7 +52,8 @@ for _lib in _CUDA_LIBS:
 # ── 2. Imports ────────────────────────────────────────────────────────────────
 import json, datetime, time, shutil, re, asyncio, random
 import numpy as np
-import pyaudio, pygame, keyboard
+import sounddevice as sd
+import pygame, keyboard
 import ctranslate2
 import urllib.request, urllib.parse
 import google.generativeai as genai
@@ -321,6 +322,49 @@ def read_status():
         return "ready"
 
 # ── 12. Audio recording ───────────────────────────────────────────────────────
+class MicInput(object):
+    """sounddevice InputStream with a pyaudio-like read() that returns int16 bytes."""
+
+    def __init__(self, device, samplerate, channels=1, blocksize=CHUNK):
+        self._stream = sd.InputStream(
+            device=device,
+            samplerate=samplerate,
+            channels=channels,
+            dtype="int16",
+            blocksize=blocksize,
+        )
+        self._stream.start()
+
+    def read(self, frames, exception_on_overflow=False):
+        data, overflowed = self._stream.read(frames)
+        if overflowed and exception_on_overflow:
+            raise RuntimeError("microphone input overflowed")
+        # sounddevice returns shape (frames, channels); flatten to int16 bytes
+        return np.asarray(data, dtype=np.int16).reshape(-1).tobytes()
+
+    def stop_stream(self):
+        if self._stream.active:
+            self._stream.stop()
+
+    def close(self):
+        self._stream.close()
+
+
+def list_input_devices():
+    """Return [(device_index, name), ...] for devices with input channels."""
+    devices = sd.query_devices()
+    result = []
+    for i, info in enumerate(devices):
+        if int(info.get("max_input_channels", 0) or 0) > 0:
+            result.append((i, info.get("name", "input-%d" % i)))
+    return result
+
+
+def default_input_rate(device_index=None):
+    info = sd.query_devices(device_index, "input")
+    return int(info.get("default_samplerate") or RATE)
+
+
 def drain_buffer(seconds=1.5):
     chunks = int(seconds * DEVICE_RATE / CHUNK)
     for _ in range(chunks):
@@ -388,14 +432,10 @@ whisper = WhisperModel(
 whisper.feature_extractor = FeatureExtractor(feature_size=128)
 print("STT model loaded!", flush=True)
 
-p = pyaudio.PyAudio()
 print("\n--- Microphones ---")
-input_devices = []
-for i in range(p.get_device_count()):
-    info = p.get_device_info_by_index(i)
-    if info["maxInputChannels"] > 0:
-        input_devices.append((i, info["name"]))
-        print(f"  [{len(input_devices)-1}] {info['name']}")
+input_devices = list_input_devices()
+for n, (_idx, name) in enumerate(input_devices):
+    print(f"  [{n}] {name}")
 
 selected = input("\nSelect microphone number (Enter = default): ").strip()
 if selected.isdigit() and int(selected) < len(input_devices):
@@ -405,14 +445,10 @@ else:
     device_index = None
     print("Using default device")
 
-DEVICE_RATE = (int(p.get_device_info_by_index(device_index)["defaultSampleRate"])
-               if device_index is not None
-               else int(p.get_default_input_device_info()["defaultSampleRate"]))
+DEVICE_RATE = default_input_rate(device_index)
 print(f"Sample rate: {DEVICE_RATE} Hz")
 
-stream = p.open(format=pyaudio.paInt16, channels=1, rate=DEVICE_RATE,
-                input=True, input_device_index=device_index, frames_per_buffer=CHUNK)
-stream.start_stream()
+stream = MicInput(device=device_index, samplerate=DEVICE_RATE, blocksize=CHUNK)
 pre_buf = deque(maxlen=int(0.4 * DEVICE_RATE / CHUNK) + 1)
 write_status("ready")
 print(f"\nReady — [Space]=reset busy   Ctrl+C=stop")
@@ -552,5 +588,4 @@ try:
 except KeyboardInterrupt:
     stream.stop_stream()
     stream.close()
-    p.terminate()
     print("\nStopped.")
