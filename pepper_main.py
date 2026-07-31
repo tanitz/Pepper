@@ -55,9 +55,10 @@ def gesture_loop(session, stop_event):
 # ── Network / file settings ───────────────────────────────────────────────────
 PEPPER_IP   = "10.1.68.244"
 # PEPPER_IP   = "10.1.68.202"
-COMPUTER_IP = "10.1.68.242"
-STREAM_PORT = 8080
-VOLUME      = 80    # 0-100
+COMPUTER_IP = "10.1.68.238"
+# COMPUTER_IP = "10.1.68.242"
+STREAM_PORT = 8081
+VOLUME      = 81    # 0-100
 
 # Play speech through Pepper's own speakers via ALAudioPlayer (reliable).
 # If it fails, we fall back to playing through the tablet webview.
