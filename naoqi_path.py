@@ -14,9 +14,11 @@ _ROOT = os.path.dirname(os.path.abspath(__file__))
 _SDK = os.path.join(_ROOT, "SDK_pynaoqi")
 
 _DOWNLOAD_HINT = (
-    "Run: bash scripts/download_pynaoqi_linux.sh\n"
-    "(or extract pynaoqi-python2.7-2.8.7.4-linux64 so this path exists:\n"
-    "    SDK_pynaoqi/linux64/lib/python2.7/site-packages/_qi.so)"
+    "Windows: extract pynaoqi so this path exists:\n"
+    "    SDK_pynaoqi/pynaoqi/lib/_qi.pyd\n"
+    "Linux:   bash scripts/download_pynaoqi_linux.sh\n"
+    "    (expects SDK_pynaoqi/linux64/lib/python2.7/site-packages/_qi.so)\n"
+    "Or set PYNAOQI_LIB to the folder that contains the native _qi module."
 )
 
 

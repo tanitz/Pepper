@@ -1,7 +1,9 @@
-# ── SDK (Linux): ~670 MB after extract — download separately (see README) ────
+# ── SDK (download / extract separately — see README / setup.ps1) ─────────────
 SDK_pynaoqi/linux64/
+SDK_pynaoqi/pynaoqi/
 SDK_pynaoqi/pynaoqi-python2.7-*-linux64*/
 SDK_pynaoqi/*.tar.gz
+SDK_pynaoqi/*.zip
 
 # ── Model: model.bin ใหญ่ 782 MB → ต้อง download แยก ────────────────────────
 # model/thonburian-large-ct2/model.bin
@@ -32,4 +34,6 @@ venv/
 __pycache__/
 *.pyc
 *.pyo
+# Keep NAOqi native module discoverable if someone force-adds the SDK tree
 *.pyd
+!SDK_pynaoqi/**/*.pyd

@@ -28,7 +28,9 @@ define run_bash
 endef
 
 help:
-	@echo "Pepper Makefile (local venv)"
+	@echo "Pepper Makefile (local venv — macOS / Linux)"
+	@echo ""
+	@echo "  Windows users: use PowerShell instead →  .\\setup.ps1 help"
 	@echo ""
 	@echo "  make setup          Create .venv, install deps, bootstrap config"
 	@echo "  make setup-venv     Create .venv with Python 3.11 only"
