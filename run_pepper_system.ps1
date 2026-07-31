@@ -1,22 +1,62 @@
 # Opens the Pepper controller and Gemini listener in separate PowerShell windows.
 # Run from PowerShell: .\run_pepper_system.ps1
-# Prereq: .\setup.ps1  (+ Windows NAOqi under SDK_pynaoqi\pynaoqi\lib\)
+# Prereq: .\setup.ps1 and .\setup_py2.ps1
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location -LiteralPath $scriptDir
 
 $venvPy = Join-Path $scriptDir ".venv\Scripts\python.exe"
 if (-not (Test-Path -LiteralPath $venvPy)) {
-    throw "Missing .venv — run: .\setup.ps1"
+    throw "Missing .venv - run: .\setup.ps1"
 }
 
-if (-not (Get-Command python -ErrorAction SilentlyContinue)) {
-    throw "Python 2.7 command was not found. Install Python 2.7 for pepper_main.py, then try again."
+function Resolve-Python2 {
+    $candidates = @(
+        @{ Exe = (Join-Path $scriptDir ".venv-py2\Scripts\python.exe"); Args = @() },
+        @{ Exe = "C:\Python27\python.exe"; Args = @() },
+        @{ Exe = "C:\Python27-x64\python.exe"; Args = @() },
+        @{ Exe = "python2"; Args = @() },
+        @{ Exe = "python2.7"; Args = @() },
+        @{ Exe = "py"; Args = @("-2.7") },
+        @{ Exe = "python"; Args = @() }
+    )
+
+    foreach ($candidate in $candidates) {
+        $exe = $candidate.Exe
+        if ([IO.Path]::IsPathRooted($exe)) {
+            if (-not (Test-Path -LiteralPath $exe)) { continue }
+        } elseif (-not (Get-Command $exe -ErrorAction SilentlyContinue)) {
+            continue
+        }
+
+        try {
+            $major = (& $exe @($candidate.Args) -c "import sys; print(sys.version_info[0])" 2>$null)
+            if ($LASTEXITCODE -eq 0 -and $major.ToString().Trim() -eq "2") {
+                return [PSCustomObject]@{
+                    Exe  = $exe
+                    Args = @($candidate.Args)
+                }
+            }
+        } catch { }
+    }
+    return $null
 }
 
-$python2Major = (& python -c "import sys; print(sys.version_info[0])").Trim()
-if ($LASTEXITCODE -ne 0 -or $python2Major -ne "2") {
-    throw "pepper_main.py requires Python 2.7. The 'python' command in this folder is not Python 2."
+$python2 = Resolve-Python2
+if (-not $python2) {
+    throw "Python 2.7 was not found. Install Python 2.7 x64 for pepper_main.py."
+}
+
+# Fail before opening child windows if the Windows NAOqi native module is absent.
+& $python2.Exe @($python2.Args) ".\naoqi_path.py" *> $null
+if ($LASTEXITCODE -ne 0) {
+    throw @"
+Python 2 cannot import qi. Either run setup for .venv-py2 or extract the
+Python 2.7 x64 pynaoqi SDK so this file exists:
+  SDK_pynaoqi\pynaoqi\lib\_qi.pyd
+
+The existing SDK_pynaoqi\linux64\...\_qi.so works only on Linux.
+"@
 }
 
 function Start-PepperWindow {
@@ -34,9 +74,12 @@ function Start-PepperWindow {
     $argList = ($PythonArgs | ForEach-Object { "'$($_ -replace "'", "''")'" }) -join ", "
     if (-not $argList) { $argList = "" }
 
-    $command = @"
+$command = @"
 Set-Location -LiteralPath '$escapedDir'
 `$Host.UI.RawUI.WindowTitle = '$Title'
+& chcp.com 65001 *> `$null
+`[Console`]::InputEncoding = New-Object Text.UTF8Encoding `$false
+`[Console`]::OutputEncoding = New-Object Text.UTF8Encoding `$false
 `$py = '$escapedPy'
 `$pyArgs = @($argList)
 & `$py @`$pyArgs .\$ScriptName
@@ -53,10 +96,10 @@ Set-Location -LiteralPath '$escapedDir'
     )
 }
 
-Start-PepperWindow -Title "Pepper Controller - Python 2" -PythonExe "python" -ScriptName "pepper_main.py"
+Start-PepperWindow -Title "Pepper Controller - Python 2" -PythonExe $python2.Exe -PythonArgs $python2.Args -ScriptName "pepper_main.py"
 Start-Sleep -Seconds 2
 Start-PepperWindow -Title "Gemini Listener - Python 3" -PythonExe $venvPy -ScriptName "listener_gemini_live.py"
 
 Write-Host "Started Pepper Controller and Gemini Listener in separate windows."
-Write-Host "  Controller: python pepper_main.py"
+Write-Host "  Controller: $($python2.Exe) $($python2.Args -join ' ') pepper_main.py"
 Write-Host "  Listener:   $venvPy listener_gemini_live.py"

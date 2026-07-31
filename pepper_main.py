@@ -4,6 +4,17 @@
 # Run alongside listener_gemini_live.py on the PC side.
 
 import sys, os as _os
+
+# Python 2 writes UTF-8 bytes below.  Make the Windows console interpret those
+# bytes as UTF-8 instead of the default OEM code page (e.g. CP437).
+if sys.platform.startswith("win"):
+    try:
+        import ctypes as _ctypes
+        _ctypes.windll.kernel32.SetConsoleOutputCP(65001)
+        _ctypes.windll.kernel32.SetConsoleCP(65001)
+    except Exception:
+        pass
+
 sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
 from naoqi_path import add_sdk_to_path
 add_sdk_to_path()
@@ -58,7 +69,7 @@ PEPPER_IP   = "10.1.68.244"
 COMPUTER_IP = "10.1.68.238"
 # COMPUTER_IP = "10.1.68.242"
 STREAM_PORT = 8081
-VOLUME      = 81    # 0-100
+VOLUME      = 100    # 0-100
 
 # Play speech through Pepper's own speakers via ALAudioPlayer (reliable).
 # If it fails, we fall back to playing through the tablet webview.

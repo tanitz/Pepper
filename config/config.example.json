@@ -7,5 +7,6 @@
   "silence_secs": 0.8,
   "max_record_secs": 10,
   "beam_size": 1,
+  "tts_volume": "+100%",
   "debug": false
 }

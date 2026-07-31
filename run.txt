@@ -1,0 +1,5 @@
+# Pepper — Python 2
+.\.venv-py2\Scripts\python.exe .\pepper_main.py
+
+# Gemini Listener — Python 3 + CUDA
+.\.venv\Scripts\python.exe .\listener_gemini_live.py

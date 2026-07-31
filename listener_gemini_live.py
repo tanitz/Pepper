@@ -18,6 +18,7 @@ if isinstance(_user_site, str) and _user_site not in _SITES:
 
 _IS_WIN = sys.platform == "win32"
 _LIB_SUBDIR = "bin" if _IS_WIN else "lib"
+_DLL_DIR_HANDLES = []
 _CUDA_LIBS = (
     ["cublas64_12.dll", "cublasLt64_12.dll", "cudnn64_9.dll", "cudnn_ops64_9.dll"]
     if _IS_WIN else
@@ -25,19 +26,19 @@ _CUDA_LIBS = (
 )
 
 for _SITE in _SITES:
-    for _pkg in ("cublas", "cudnn"):
+    for _pkg in ("cublas", "cuda_nvrtc", "cudnn"):
         _d = os.path.join(_SITE, "nvidia", _pkg, _LIB_SUBDIR)
         if not os.path.isdir(_d):
             continue
         if _IS_WIN:
-            os.add_dll_directory(_d)
+            _DLL_DIR_HANDLES.append(os.add_dll_directory(_d))
             os.environ["PATH"] = _d + os.pathsep + os.environ.get("PATH", "")
         else:
             os.environ["LD_LIBRARY_PATH"] = _d + os.pathsep + os.environ.get("LD_LIBRARY_PATH", "")
 
 for _lib in _CUDA_LIBS:
     for _SITE in _SITES:
-        for _pkg in ("cublas", "cudnn"):
+        for _pkg in ("cublas", "cuda_nvrtc", "cudnn"):
             _p = os.path.join(_SITE, "nvidia", _pkg, _LIB_SUBDIR, _lib)
             if not os.path.exists(_p):
                 continue
@@ -50,11 +51,33 @@ for _lib in _CUDA_LIBS:
                 pass
 
 # ── 2. Imports ────────────────────────────────────────────────────────────────
+def cuda_runtime_available():
+    """Detect an incomplete CUDA runtime before CT2 starts lazy inference."""
+    required = (
+        ("cublas64_12.dll", "cudnn64_9.dll")
+        if _IS_WIN else
+        ("libcublas.so.12", "libcudnn.so.9")
+    )
+    loader = ctypes.WinDLL if _IS_WIN else ctypes.CDLL
+    missing = []
+    for lib_name in required:
+        try:
+            loader(lib_name)
+        except OSError:
+            missing.append(lib_name)
+    return not missing, missing
+
+
 import json, datetime, time, shutil, re, asyncio, random
 import numpy as np
 import sounddevice as sd
 import pygame, keyboard
 import ctranslate2
+if _IS_WIN:
+    # The Windows CT2 wheel bundles cuDNN beside the extension module.
+    _ct2_lib_dir = os.path.dirname(ctranslate2.__file__)
+    _DLL_DIR_HANDLES.append(os.add_dll_directory(_ct2_lib_dir))
+    os.environ["PATH"] = _ct2_lib_dir + os.pathsep + os.environ.get("PATH", "")
 import urllib.request, urllib.parse
 import google.generativeai as genai
 from faster_whisper import WhisperModel
@@ -226,9 +249,13 @@ def download_google_tts(text, lang_code):
         print("TTS error:", e)
         return False
 
-def _edge_tts_speak(text, voice):
+def _edge_tts_speak(text, voice, volume):
     async def _run():
-        await _edge_tts.Communicate(text, voice=voice).save(SPEECH_FILE)
+        await _edge_tts.Communicate(
+            text,
+            voice=voice,
+            volume=volume,
+        ).save(SPEECH_FILE)
     pygame.mixer.music.unload()
     asyncio.run(_run())
     # edge-tts can silently produce an empty/invalid file for some text+voice.
@@ -239,10 +266,15 @@ def _edge_tts_speak(text, voice):
 def speak(text):
     mode_key  = _TTS_MODE_KEY.get(_current_lang, "tts_mode_th")
     tts_mode  = cfg(mode_key, _TTS_DEFAULT.get(_current_lang, "niwat"))
+    tts_volume = str(cfg("tts_volume", "+100%")).strip()
+    volume_match = re.match(r"^[+-](\d{1,3})%$", tts_volume)
+    if not volume_match or int(volume_match.group(1)) > 100:
+        print(f"[TTS] Invalid tts_volume={tts_volume!r}; using +100%", flush=True)
+        tts_volume = "+100%"
     voices    = _VOICES.get(_current_lang, _VOICES["th"])
     if tts_mode in voices and EDGE_TTS_OK:
         try:
-            _edge_tts_speak(text, voices[tts_mode])
+            _edge_tts_speak(text, voices[tts_mode], tts_volume)
             return True
         except Exception as e:
             print(f"edge-tts error: {e} — fallback Google TTS")
@@ -410,9 +442,16 @@ except pygame.error as e:
 
 
 cuda_count = ctranslate2.get_cuda_device_count()
-use_cuda   = cuda_count > 0
+cuda_runtime_ok, missing_cuda_libs = cuda_runtime_available()
+use_cuda = cuda_count > 0 and cuda_runtime_ok
 print(f"CUDA devices: {cuda_count}  →  Using: {'GPU (CUDA)' if use_cuda else 'CPU'}", flush=True)
 if not use_cuda:
+    if cuda_count > 0 and missing_cuda_libs:
+        print(
+            "  [warning] GPU detected, but missing CUDA libraries: "
+            + ", ".join(missing_cuda_libs),
+            flush=True,
+        )
     print(
         "  [tip] For GPU: install nvidia-cublas-cu12 nvidia-cudnn-cu12, "
         "and ensure the NVIDIA driver is visible (nvidia-smi). "
@@ -431,6 +470,49 @@ whisper = WhisperModel(
 )
 whisper.feature_extractor = FeatureExtractor(feature_size=128)
 print("STT model loaded!", flush=True)
+
+
+def transcribe_audio(audio, language):
+    """Transcribe eagerly and retry once on CPU if CUDA fails."""
+    global whisper, use_cuda
+
+    options = dict(
+        language=language,
+        beam_size=cfg("beam_size", 1),
+        temperature=0,
+        no_speech_threshold=0.6,
+        condition_on_previous_text=False,
+        compression_ratio_threshold=2.0,
+        vad_filter=True,
+    )
+    try:
+        segments, info = whisper.transcribe(audio, **options)
+        return list(segments), info
+    except RuntimeError as exc:
+        message = str(exc).lower()
+        cuda_failure = any(
+            marker in message
+            for marker in ("cublas", "cudnn", "cuda", "library")
+        )
+        if not use_cuda or not cuda_failure:
+            raise
+
+        print(
+            f"\n[warning] CUDA transcription failed ({exc}); retrying on CPU...",
+            flush=True,
+        )
+        use_cuda = False
+        whisper = WhisperModel(
+            _MODEL_PATH,
+            device="cpu",
+            compute_type="int8",
+            cpu_threads=8,
+            num_workers=2,
+        )
+        whisper.feature_extractor = FeatureExtractor(feature_size=128)
+        segments, info = whisper.transcribe(audio, **options)
+        return list(segments), info
+
 
 print("\n--- Microphones ---")
 input_devices = list_input_devices()
@@ -518,16 +600,7 @@ try:
         audio = record_until_silence(list(pre_buf))
         pre_buf.clear()
         print(_STT_LABEL.get(_current_lang, "Transcribing..."), flush=True)
-        segments, _ = whisper.transcribe(
-            audio,
-            language                   = _current_lang,
-            beam_size                  = cfg("beam_size", 1),
-            temperature                = 0,
-            no_speech_threshold        = 0.6,
-            condition_on_previous_text = False,
-            compression_ratio_threshold= 2.0,
-            vad_filter                 = True,
-        )
+        segments, _ = transcribe_audio(audio, _current_lang)
         confident = [s for s in segments if s.avg_logprob > -1.0 and s.no_speech_prob < 0.6]
         text = "".join(s.text for s in confident).strip()
 

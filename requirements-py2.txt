@@ -1,0 +1,2 @@
+# Pepper controller runtime (CPython 2.7, Windows x64).
+qi==1.7.0

@@ -75,12 +75,22 @@ def find_sdk_lib():
 
 
 def add_sdk_to_path():
-    """Put the SDK lib dir at the front of sys.path so `import qi` resolves."""
-    lib = find_sdk_lib()
+    """Make `qi` importable from either an extracted SDK or the active env."""
+    try:
+        lib = find_sdk_lib()
+    except ImportError as sdk_error:
+        # SoftBank also publishes a CPython 2.7 wheel for Windows.  When it is
+        # installed in .venv-py2 no external SDK directory is necessary.
+        try:
+            import qi
+        except ImportError:
+            raise sdk_error
+        return os.path.dirname(os.path.abspath(qi.__file__))
+
     if lib not in sys.path:
         sys.path.insert(0, lib)
     return lib
 
 
 if __name__ == "__main__":
-    print(find_sdk_lib())
+    print(add_sdk_to_path())
