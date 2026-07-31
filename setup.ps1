@@ -248,6 +248,19 @@ else:
     }
 }
 
+function Test-PythonImport {
+    param([string]$ModuleName)
+    # FutureWarning on stderr must not abort under $ErrorActionPreference = Stop
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        $null = & $VenvPy -c "import $ModuleName" 2>&1
+        return ($LASTEXITCODE -eq 0)
+    } finally {
+        $ErrorActionPreference = $prev
+    }
+}
+
 function Invoke-Check {
     $script:CheckPass = 0
     $script:CheckFail = 0
@@ -347,14 +360,20 @@ function Invoke-Check {
     Write-Host "== Python 3 packages =="
     if (Test-Path -LiteralPath $VenvPy) {
         foreach ($pkg in @("faster_whisper", "google.generativeai", "sounddevice", "pygame", "numpy", "scipy")) {
-            & $VenvPy -c "import $pkg" 2>$null | Out-Null
-            if ($LASTEXITCODE -eq 0) { Ok "import $pkg" }
+            if (Test-PythonImport $pkg) { Ok "import $pkg" }
             else { Fail "cannot import $pkg - run: .\setup.ps1 install" }
         }
-        & $VenvPy -c "import ctranslate2" 2>$null | Out-Null
-        if ($LASTEXITCODE -eq 0) {
+        if (Test-PythonImport "ctranslate2") {
             Ok "import ctranslate2"
-            $cudaN = & $VenvPy -c "import ctranslate2; print(ctranslate2.get_cuda_device_count())" 2>$null
+            $prev = $ErrorActionPreference
+            $ErrorActionPreference = "Continue"
+            try {
+                $cudaN = & $VenvPy -c "import ctranslate2; print(ctranslate2.get_cuda_device_count())" 2>&1 |
+                    Where-Object { $_ -match '^\d+$' } |
+                    Select-Object -Last 1
+            } finally {
+                $ErrorActionPreference = $prev
+            }
             $cudaCount = 0
             if ($cudaN) { [void][int]::TryParse($cudaN.ToString().Trim(), [ref]$cudaCount) }
             if ($cudaCount -gt 0) {
