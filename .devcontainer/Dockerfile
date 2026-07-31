@@ -22,6 +22,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     # Audio / SDL (pyaudio, pygame)
     portaudio19-dev \
     libasound2-dev \
+    alsa-utils \
     libportmidi-dev \
     libsdl2-dev \
     libsdl2-image-dev \
@@ -61,5 +62,9 @@ RUN update-alternatives --install /usr/bin/python3 python3 /usr/local/bin/python
     && ln -sf /usr/local/bin/pip3.11 /usr/local/bin/pip3 \
     && ln -sf /usr/local/bin/pip3.11 /usr/local/bin/pip \
     && ln -sf /usr/bin/python2.7 /usr/local/bin/python2
+
+# "audio" group so vscode can open /dev/snd when the container is started
+# with --device=/dev/snd on a host that has a real sound card.
+RUN groupadd -f audio && usermod -aG audio vscode
 
 WORKDIR /workspaces/Pepper

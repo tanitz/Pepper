@@ -20,7 +20,19 @@
   "hostRequirements": {
     "gpu": "optional"
   },
-  "runArgs": ["--gpus", "all"],
+  // NOTE: --device=/dev/snd passes the host's ALSA sound card into the
+  // container. It only works on Linux hosts that actually have /dev/snd —
+  // docker errors out at container start if the path doesn't exist, so it
+  // is NOT enabled unconditionally (this container also runs on hosts
+  // without a card, e.g. macOS/cloud, where audio falls back to the SDL
+  // dummy driver). On a Linux box with a real card, uncomment the device
+  // line below. postStartCommand chmods the node so the "vscode" user can
+  // access it regardless of the host's "audio" group gid.
+  "runArgs": [
+    "--gpus", "all"
+    // , "--device=/dev/snd"
+  ],
+  "postStartCommand": "sudo chmod a+rw /dev/snd/* 2>/dev/null || true",
 
   "forwardPorts": [8080],
   "portsAttributes": {
