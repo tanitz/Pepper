@@ -1,4 +1,4 @@
-# Python 3.11 — listener_gemini_live.py
+# Python 3.11 only (Windows/macOS/Linux). Avoid 3.12+ — pygame/pyaudio often lack wheels.
 faster-whisper
 google-generativeai
 pyaudio

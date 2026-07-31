@@ -60,26 +60,28 @@ Activate manually:
 }
 
 function Resolve-HostPython {
+    # Require Python 3.11.x only. 3.12+ (especially 3.14) often has no
+    # prebuilt wheels for pygame/pyaudio, so pip tries to compile and fails.
     if (Get-Command py -ErrorAction SilentlyContinue) {
-        foreach ($arg in @("-3.11", "-3")) {
+        foreach ($arg in @("-3.11")) {
             try {
                 $ver = & py $arg -c "import sys; print('%d.%d' % sys.version_info[:2])" 2>$null
                 if ($LASTEXITCODE -eq 0 -and $ver) {
                     $parts = $ver.Trim().Split(".")
-                    if ([int]$parts[0] -eq 3 -and [int]$parts[1] -ge 11) {
+                    if ([int]$parts[0] -eq 3 -and [int]$parts[1] -eq 11) {
                         return @{ Exe = "py"; Args = @($arg) }
                     }
                 }
             } catch { }
         }
     }
-    foreach ($name in @("python3.11", "python")) {
+    foreach ($name in @("python3.11")) {
         if (Get-Command $name -ErrorAction SilentlyContinue) {
             try {
                 $ver = & $name -c "import sys; print('%d.%d' % sys.version_info[:2])" 2>$null
                 if ($LASTEXITCODE -eq 0 -and $ver) {
                     $parts = $ver.Trim().Split(".")
-                    if ([int]$parts[0] -eq 3 -and [int]$parts[1] -ge 11) {
+                    if ([int]$parts[0] -eq 3 -and [int]$parts[1] -eq 11) {
                         return @{ Exe = $name; Args = @() }
                     }
                 }
@@ -92,16 +94,31 @@ function Resolve-HostPython {
 function Ensure-Venv {
     $hostPy = Resolve-HostPython
     if (-not $hostPy) {
-        throw "Python 3.11+ not found. Install from https://www.python.org/downloads/ (enable py launcher) or: winget install Python.Python.3.11"
+        throw @"
+Python 3.11 not found (required). Do not use Python 3.12/3.13/3.14 for this project.
+Install 3.11, then recreate the venv:
+  winget install Python.Python.3.11
+  powershell -ExecutionPolicy Bypass -File .\setup.ps1 clean-venv
+  powershell -ExecutionPolicy Bypass -File .\setup.ps1
+"@
     }
 
-    if (-not (Test-Path -LiteralPath $VenvPy)) {
+    if (Test-Path -LiteralPath $VenvPy) {
+        $existing = & $VenvPy -c "import sys; print('%d.%d' % sys.version_info[:2])" 2>$null
+        if (-not $existing -or $existing.ToString().Trim() -ne "3.11") {
+            throw @"
+Existing .venv is Python $($existing) but this project needs 3.11.
+Recreate it:
+  powershell -ExecutionPolicy Bypass -File .\setup.ps1 clean-venv
+  powershell -ExecutionPolicy Bypass -File .\setup.ps1
+"@
+        }
+        Write-Ok "venv already exists: $VenvDir"
+    } else {
         $shown = & $hostPy.Exe (@($hostPy.Args) + @("--version")) 2>&1
         Write-Host "==> Creating venv at $VenvDir with $shown"
         & $hostPy.Exe (@($hostPy.Args) + @("-m", "venv", $VenvDir))
         if ($LASTEXITCODE -ne 0) { throw "Failed to create venv" }
-    } else {
-        Write-Ok "venv already exists: $VenvDir"
     }
 
     $ver = & $VenvPy --version 2>&1
