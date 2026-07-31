@@ -1,10 +1,8 @@
-# Pepper — Windows setup (venv + deps + readiness). Mirrors Makefile targets.
+# Pepper - Windows setup (venv + deps + readiness). Mirrors Makefile targets.
 # Usage:
-#   .\setup.ps1              # full setup
-#   .\setup.ps1 help
-#   .\setup.ps1 check
-#   .\setup.ps1 setup-model
-#   .\setup.ps1 run-listener
+#   powershell -ExecutionPolicy Bypass -File .\setup.ps1
+#   powershell -ExecutionPolicy Bypass -File .\setup.ps1 check
+#   powershell -ExecutionPolicy Bypass -File .\setup.ps1 setup-model
 
 [CmdletBinding()]
 param(
@@ -53,13 +51,15 @@ Typical flow:
   5) .\setup.ps1 check
   6) .\run_pepper_system.ps1   (or .\setup.ps1 run-listener)
 
+If scripts are blocked:
+  powershell -ExecutionPolicy Bypass -File .\setup.ps1
+
 Activate manually:
   .\.venv\Scripts\Activate.ps1
 "@
 }
 
 function Resolve-HostPython {
-    # Prefer the Windows Python launcher with 3.11.
     if (Get-Command py -ErrorAction SilentlyContinue) {
         foreach ($arg in @("-3.11", "-3")) {
             try {
@@ -89,20 +89,10 @@ function Resolve-HostPython {
     return $null
 }
 
-function Invoke-HostPython {
-    param([Parameter(Mandatory)][string[]]$PythonArgs)
-    $hostPy = Resolve-HostPython
-    if (-not $hostPy) {
-        throw "Python 3.11+ not found. Install from https://www.python.org/downloads/ (check 'py launcher') or: winget install Python.Python.3.11"
-    }
-    & $hostPy.Exe (@($hostPy.Args) + $PythonArgs)
-    if ($LASTEXITCODE -ne 0) { throw "Python command failed (exit $LASTEXITCODE)" }
-}
-
 function Ensure-Venv {
     $hostPy = Resolve-HostPython
     if (-not $hostPy) {
-        throw "Python 3.11+ not found. Install from https://www.python.org/downloads/ (check 'py launcher') or: winget install Python.Python.3.11"
+        throw "Python 3.11+ not found. Install from https://www.python.org/downloads/ (enable py launcher) or: winget install Python.Python.3.11"
     }
 
     if (-not (Test-Path -LiteralPath $VenvPy)) {
@@ -132,13 +122,13 @@ function Install-Requirements {
     if ($LASTEXITCODE -ne 0) { throw "pip install failed" }
     Write-Ok "Python 3 packages installed into .venv"
     Write-Host ""
-    Write-Host "Tip (Windows audio): if pyaudio fails, install PortAudio or use a prebuilt wheel, then re-run: .\setup.ps1 install"
+    Write-Host "Tip (Windows audio): if pyaudio fails, install a PortAudio wheel, then re-run: .\setup.ps1 install"
 }
 
 function Install-Cuda {
     Ensure-Venv
     if (-not (Get-Command nvidia-smi -ErrorAction SilentlyContinue)) {
-        Write-Warn "nvidia-smi not found — installing CUDA wheels anyway"
+        Write-Warn "nvidia-smi not found - installing CUDA wheels anyway"
     }
     Write-Host "==> Installing CUDA libs from $ReqCuda ..."
     & $VenvPip install -r $ReqCuda
@@ -160,7 +150,7 @@ function Setup-Config {
             throw "Missing config\config.example.json"
         }
         Copy-Item -LiteralPath $examplePath -Destination $configPath
-        Write-Ok "created config\config.json — set gemini_api_key"
+        Write-Ok "created config\config.json - set gemini_api_key"
     }
 }
 
@@ -176,33 +166,71 @@ function Setup-Model {
         Remove-Item -LiteralPath $safeTensors -Force
     }
 
-    $modelDirPy = $modelDir.Replace('\', '/')
-    $code = @"
+    $modelDirPy = $modelDir.Replace("\", "/")
+    $tmpPy = Join-Path $env:TEMP "pepper_download_model.py"
+    @"
 from huggingface_hub import snapshot_download
 snapshot_download(
-    'CodeHardThailand/whisper-th-large-v3-combined-ct2',
-    local_dir=r'$modelDirPy'
+    "CodeHardThailand/whisper-th-large-v3-combined-ct2",
+    local_dir=r"$modelDirPy",
 )
-"@
-    & $VenvPy -c $code
-    if ($LASTEXITCODE -ne 0) { throw "model download failed" }
+"@ | Set-Content -LiteralPath $tmpPy -Encoding ASCII
+
+    try {
+        & $VenvPy $tmpPy
+        if ($LASTEXITCODE -ne 0) { throw "model download failed" }
+    } finally {
+        Remove-Item -LiteralPath $tmpPy -Force -ErrorAction SilentlyContinue
+    }
+
     if (-not (Test-Path -LiteralPath $modelBin)) {
         throw "model.bin still missing after download"
     }
     Write-Ok "model.bin ready"
 }
 
+function Test-GeminiKeyStatus {
+    param([string]$ConfigPath)
+    $configPathPy = $ConfigPath.Replace("\", "/")
+    $tmpPy = Join-Path $env:TEMP "pepper_check_key.py"
+    @"
+import json
+from pathlib import Path
+p = Path(r"$configPathPy")
+try:
+    c = json.loads(p.read_text(encoding="utf-8"))
+except Exception:
+    print("invalid")
+    raise SystemExit
+k = (c.get("gemini_api_key") or "").strip()
+bad = ("", "YOUR_GEMINI_API_KEY")
+if (not k) or (k in bad) or ("YOUR_" in k.upper()) or (len(k) < 20):
+    print("placeholder")
+else:
+    print("ok")
+"@ | Set-Content -LiteralPath $tmpPy -Encoding ASCII
+
+    try {
+        $out = & $VenvPy $tmpPy 2>$null
+        if ($out) { return ([string]$out).Trim() }
+        return "placeholder"
+    } finally {
+        Remove-Item -LiteralPath $tmpPy -Force -ErrorAction SilentlyContinue
+    }
+}
+
 function Invoke-Check {
     $script:CheckPass = 0
     $script:CheckFail = 0
     $script:CheckWarn = 0
+
     function Ok([string]$m)   { $script:CheckPass++; Write-Ok $m }
     function Fail([string]$m) { $script:CheckFail++; Write-Fail $m }
     function Warn([string]$m) { $script:CheckWarn++; Write-Warn $m }
 
     Write-Host "Pepper readiness check"
     Write-Host "  workspace: $Root"
-    Write-Host "  host:      Windows $([Environment]::OSVersion.VersionString)"
+    Write-Host "  host:      Windows"
     Write-Host ""
 
     Write-Host "== Python 3 / venv =="
@@ -210,7 +238,7 @@ function Invoke-Check {
         $ver = & $VenvPy --version 2>&1
         Ok "venv python: $VenvPy ($ver)"
     } else {
-        Fail "missing .venv — run: .\setup.ps1"
+        Fail "missing .venv - run: .\setup.ps1"
     }
     Write-Host ""
 
@@ -218,28 +246,31 @@ function Invoke-Check {
     $py2 = $null
     if (Get-Command python -ErrorAction SilentlyContinue) {
         try {
-            $maj = (& python -c "import sys; print(sys.version_info[0])" 2>$null).Trim()
-            if ($maj -eq "2") { $py2 = "python" }
+            $maj = (& python -c "import sys; print(sys.version_info[0])" 2>$null)
+            if ($maj -and $maj.ToString().Trim() -eq "2") { $py2 = "python" }
         } catch { }
     }
     if ($py2) {
         $ver2 = & python --version 2>&1
         Ok "Python 2 available: python ($ver2)"
     } else {
-        Warn "Python 2.7 not on PATH — needed for pepper_main.py + Windows NAOqi"
+        Warn "Python 2.7 not on PATH - needed for pepper_main.py + Windows NAOqi"
     }
     Write-Host ""
 
     Write-Host "== App assets =="
-    $qiPyd = Join-Path $Root "SDK_pynaoqi\pynaoqi\lib\_qi.pyd"
-    $qiGlob = Get-ChildItem -Path (Join-Path $Root "SDK_pynaoqi\pynaoqi\lib") -Filter "_qi*.pyd" -ErrorAction SilentlyContinue
-    if ($qiGlob) {
+    $qiLib = Join-Path $Root "SDK_pynaoqi\pynaoqi\lib"
+    $qiGlob = @()
+    if (Test-Path -LiteralPath $qiLib) {
+        $qiGlob = @(Get-ChildItem -Path $qiLib -Filter "_qi*.pyd" -ErrorAction SilentlyContinue)
+    }
+    if ($qiGlob.Count -gt 0) {
         Ok "NAOqi Windows SDK present ($($qiGlob[0].FullName))"
         if ($py2) {
             try {
-                $sdkPath = (& python naoqi_path.py 2>$null).Trim()
+                $sdkPath = (& python naoqi_path.py 2>$null)
                 if ($LASTEXITCODE -eq 0 -and $sdkPath) {
-                    Ok "naoqi_path.py resolves: $sdkPath"
+                    Ok "naoqi_path.py resolves: $($sdkPath.ToString().Trim())"
                 } else {
                     Fail "naoqi_path.py cannot resolve SDK"
                 }
@@ -248,45 +279,31 @@ function Invoke-Check {
             }
         }
     } else {
-        Fail "NAOqi Windows SDK missing — extract to SDK_pynaoqi\pynaoqi\lib\ (_qi.pyd + dlls)"
+        Fail "NAOqi Windows SDK missing - extract to SDK_pynaoqi\pynaoqi\lib\ (_qi.pyd + dlls)"
     }
 
     $modelBin = Join-Path $Root "model\thonburian-large-ct2\model.bin"
     if (Test-Path -LiteralPath $modelBin) {
         Ok "Whisper model present ($modelBin)"
     } else {
-        Fail "Whisper model.bin missing — download with: .\setup.ps1 setup-model"
+        Fail "Whisper model.bin missing - download with: .\setup.ps1 setup-model"
     }
 
     $configPath = Join-Path $Root "config\config.json"
     if (Test-Path -LiteralPath $configPath) {
         Ok "config\config.json exists"
         if (Test-Path -LiteralPath $VenvPy) {
-            $configPathPy = $configPath.Replace('\', '/')
-            $keyStatus = & $VenvPy -c @"
-import json
-from pathlib import Path
-p = Path(r'$configPathPy')
-try:
-    c = json.loads(p.read_text(encoding='utf-8'))
-except Exception:
-    print('invalid')
-    raise SystemExit
-k = (c.get('gemini_api_key') or '').strip()
-bad = ('', 'YOUR_GEMINI_API_KEY')
-if (not k) or (k in bad) or ('YOUR_' in k.upper()) or (len(k) < 20):
-    print('placeholder')
-else:
-    print('ok')
-"@
-            switch ($keyStatus.Trim()) {
-                "ok" { Ok "gemini_api_key looks set" }
-                "invalid" { Fail "config\config.json is not valid JSON" }
-                default { Fail "gemini_api_key not set — edit config\config.json" }
+            $keyStatus = Test-GeminiKeyStatus -ConfigPath $configPath
+            if ($keyStatus -eq "ok") {
+                Ok "gemini_api_key looks set"
+            } elseif ($keyStatus -eq "invalid") {
+                Fail "config\config.json is not valid JSON"
+            } else {
+                Fail "gemini_api_key not set - edit config\config.json"
             }
         }
     } else {
-        Fail "config\config.json missing — run: .\setup.ps1 setup-config"
+        Fail "config\config.json missing - run: .\setup.ps1 setup-config"
     }
 
     $mainPy = Join-Path $Root "pepper_main.py"
@@ -301,28 +318,30 @@ else:
     Write-Host "== Python 3 packages =="
     if (Test-Path -LiteralPath $VenvPy) {
         foreach ($pkg in @("faster_whisper", "google.generativeai", "pyaudio", "pygame", "numpy", "scipy")) {
-            & $VenvPy -c "import $pkg" 2>$null
+            & $VenvPy -c "import $pkg" 2>$null | Out-Null
             if ($LASTEXITCODE -eq 0) { Ok "import $pkg" }
-            else { Fail "cannot import $pkg — run: .\setup.ps1 install" }
+            else { Fail "cannot import $pkg - run: .\setup.ps1 install" }
         }
-        & $VenvPy -c "import ctranslate2" 2>$null
+        & $VenvPy -c "import ctranslate2" 2>$null | Out-Null
         if ($LASTEXITCODE -eq 0) {
             Ok "import ctranslate2"
             $cudaN = & $VenvPy -c "import ctranslate2; print(ctranslate2.get_cuda_device_count())" 2>$null
-            if ([int]$cudaN -gt 0) {
-                Ok "CUDA devices: $cudaN (Whisper will use GPU)"
+            $cudaCount = 0
+            if ($cudaN) { [void][int]::TryParse($cudaN.ToString().Trim(), [ref]$cudaCount) }
+            if ($cudaCount -gt 0) {
+                Ok "CUDA devices: $cudaCount (Whisper will use GPU)"
             } else {
-                Warn "CUDA devices: 0 — Whisper will use CPU (GPU: .\setup.ps1 install-cuda)"
+                Warn "CUDA devices: 0 - Whisper will use CPU (GPU: .\setup.ps1 install-cuda)"
             }
         } else {
-            Fail "cannot import ctranslate2 — run: .\setup.ps1 install"
+            Fail "cannot import ctranslate2 - run: .\setup.ps1 install"
         }
     } else {
-        Fail "skip package imports — create venv with: .\setup.ps1"
+        Fail "skip package imports - create venv with: .\setup.ps1"
     }
     Write-Host ""
 
-    Write-Host "────────────────────────────────────────"
+    Write-Host "----------------------------------------"
     Write-Host "  OK=$script:CheckPass  WARN=$script:CheckWarn  FAIL=$script:CheckFail"
     if ($script:CheckFail -eq 0) {
         Write-Host "  STATUS: READY to run" -ForegroundColor Green
@@ -339,7 +358,7 @@ else:
 function Run-Listener {
     Ensure-Venv
     if (-not (Test-Path -LiteralPath $VenvPy)) {
-        throw "missing .venv — run: .\setup.ps1"
+        throw "missing .venv - run: .\setup.ps1"
     }
     & $VenvPy (Join-Path $Root "listener_gemini_live.py")
 }
