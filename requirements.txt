@@ -1,0 +1,11 @@
+# Python 3.11 — listener_gemini_live.py
+faster-whisper
+google-generativeai
+pyaudio
+pygame
+keyboard
+numpy
+scipy
+ctranslate2
+edge-tts
+huggingface_hub

@@ -1,0 +1,5 @@
+# Optional CUDA runtime libs for Whisper CT2 (Linux + NVIDIA GPU only).
+# Install with: make install-cuda
+# Safe to skip on macOS / CPU-only hosts.
+nvidia-cublas-cu12
+nvidia-cudnn-cu12

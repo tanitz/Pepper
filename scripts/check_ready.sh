@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Report whether Pepper is ready to run (host Docker / Dev Container / app deps).
+# Report whether Pepper is ready to run on the host (local .venv).
 # Exit 0 = READY, 1 = NOT READY
 set -uo pipefail
 
@@ -14,78 +14,40 @@ ok()   { PASS=$((PASS + 1)); printf '  [OK]   %s\n' "$*"; }
 fail() { FAIL=$((FAIL + 1)); printf '  [FAIL] %s\n' "$*"; }
 warn() { WARN=$((WARN + 1)); printf '  [WARN] %s\n' "$*"; }
 
-IN_CONTAINER=0
-if [[ -f /.dockerenv ]] || grep -qaE 'docker|containerd|kubepods' /proc/1/cgroup 2>/dev/null; then
-  IN_CONTAINER=1
-fi
+UNAME_S="$(uname -s 2>/dev/null || echo unknown)"
+VENV_PY="$ROOT/.venv/bin/python"
 
 echo "Pepper readiness check"
 echo "  workspace: $ROOT"
-if [[ "$IN_CONTAINER" -eq 1 ]]; then
-  echo "  context:   Dev Container / Docker"
+echo "  host:      $UNAME_S $(uname -m 2>/dev/null || true)"
+echo ""
+
+# ── Python 3 / venv ──────────────────────────────────────────────────────────
+echo "== Python 3 / venv =="
+if [[ -x "$VENV_PY" ]]; then
+  ok "venv python: $VENV_PY ($("$VENV_PY" --version 2>&1))"
+  PY3="$VENV_PY"
 else
-  echo "  context:   host (outside container)"
+  fail "missing .venv — run: make setup"
+  if command -v python3.11 >/dev/null 2>&1; then
+    warn "host python3.11 available: $(command -v python3.11) (not using venv yet)"
+  elif command -v python3 >/dev/null 2>&1; then
+    warn "host python3 available: $(command -v python3) ($($(command -v python3) --version 2>&1))"
+  fi
+  PY3="$(command -v python3.11 2>/dev/null || command -v python3 || true)"
 fi
 echo ""
 
-# ── Docker / Dev Container scaffolding ──────────────────────────────────────
-echo "== Docker / Dev Container =="
-if command -v docker >/dev/null 2>&1; then
-  ok "docker CLI found: $(command -v docker)"
-  if docker info >/dev/null 2>&1; then
-    ok "Docker daemon is running"
-  else
-    DOCKER_ERR="$(docker info 2>&1 | tail -n 1 | tr -d '\r')"
-    if [[ "$IN_CONTAINER" -eq 1 ]]; then
-      warn "Docker daemon not reachable from inside container (usually fine)"
-    elif echo "$DOCKER_ERR" | grep -qi 'permission denied'; then
-      fail "Docker socket permission denied — start/open OrbStack or Docker Desktop, then retry"
-    else
-      fail "Docker daemon not ready — start OrbStack / Docker Desktop (${DOCKER_ERR})"
-    fi
-  fi
-else
-  if [[ "$IN_CONTAINER" -eq 1 ]]; then
-    warn "docker CLI not installed inside container (not required to run Pepper)"
-  else
-    fail "docker CLI not found — install Docker Desktop / OrbStack"
-  fi
-fi
-
-if [[ -f .devcontainer/devcontainer.json && -f .devcontainer/Dockerfile && -f .devcontainer/post-create.sh ]]; then
-  ok "Dev Container files present (.devcontainer/)"
-else
-  fail "Missing .devcontainer files (devcontainer.json / Dockerfile / post-create.sh)"
-fi
-
-if [[ "$IN_CONTAINER" -eq 1 ]]; then
-  ok "Running inside a container"
-else
-  warn "Not inside Dev Container yet — use: Dev Containers: Reopen in Container"
-fi
-echo ""
-
-# ── Runtime toolchain (mostly inside container) ──────────────────────────────
-echo "== Runtime =="
-if command -v python3.11 >/dev/null 2>&1 || python3 --version 2>/dev/null | grep -q '3\.11'; then
-  PY3="$(command -v python3.11 2>/dev/null || command -v python3)"
-  ok "Python 3.11 available: $PY3 ($($PY3 --version 2>&1))"
-else
-  if [[ "$IN_CONTAINER" -eq 1 ]]; then
-    fail "Python 3.11 missing inside container"
-  else
-    warn "Python 3.11 not on host (expected inside Dev Container)"
-  fi
-fi
-
+# ── Python 2 (NAOqi / pepper_main) ───────────────────────────────────────────
+echo "== Python 2 (pepper_main / NAOqi) =="
 if command -v python2 >/dev/null 2>&1 || command -v python2.7 >/dev/null 2>&1; then
   PY2="$(command -v python2 2>/dev/null || command -v python2.7)"
-  ok "Python 2.7 available: $PY2 ($($PY2 --version 2>&1))"
+  ok "Python 2 available: $PY2 ($($PY2 --version 2>&1))"
 else
-  if [[ "$IN_CONTAINER" -eq 1 ]]; then
-    fail "Python 2.7 missing inside container (needed for pepper_main.py)"
+  if [[ "$UNAME_S" = "Linux" ]]; then
+    fail "Python 2.7 missing — needed for pepper_main.py (e.g. apt install python2.7)"
   else
-    warn "Python 2.7 not on host (expected inside Dev Container)"
+    warn "Python 2.7 not on host — pepper_main.py needs Linux + python2.7 + NAOqi SDK"
   fi
 fi
 echo ""
@@ -104,7 +66,11 @@ if [[ -f "$QI_SO" ]]; then
     fi
   fi
 else
-  fail "NAOqi Linux SDK missing — run: make setup-sdk"
+  if [[ "$UNAME_S" = "Linux" ]]; then
+    fail "NAOqi Linux SDK missing — run: make setup-sdk"
+  else
+    warn "NAOqi linux64 SDK missing (expected on Linux robot host) — make setup-sdk"
+  fi
 fi
 
 MODEL_BIN="model/thonburian-large-ct2/model.bin"
@@ -117,15 +83,14 @@ fi
 CONFIG="config/config.json"
 if [[ -f "$CONFIG" ]]; then
   ok "config/config.json exists"
-  if command -v python3 >/dev/null 2>&1 || command -v python3.11 >/dev/null 2>&1; then
-    PYCFG="$(command -v python3.11 2>/dev/null || command -v python3)"
-    KEY_STATUS="$($PYCFG - <<'PY' 2>/dev/null || true
+  if [[ -n "${PY3:-}" ]]; then
+    KEY_STATUS="$($PY3 - <<'PY' 2>/dev/null || true
 import json
 from pathlib import Path
 p = Path("config/config.json")
 try:
     c = json.loads(p.read_text())
-except Exception as e:
+except Exception:
     print("invalid")
     raise SystemExit
 k = (c.get("gemini_api_key") or "").strip()
@@ -145,7 +110,7 @@ PY
     warn "Cannot validate gemini_api_key (no python3)"
   fi
 else
-  fail "config/config.json missing — copy from config/config.example.json"
+  fail "config/config.json missing — run: make setup-config"
 fi
 
 if [[ -f pepper_main.py && -f listener_gemini_live.py ]]; then
@@ -155,43 +120,41 @@ else
 fi
 echo ""
 
-# ── Python 3 packages (inside container) ─────────────────────────────────────
-if [[ "$IN_CONTAINER" -eq 1 ]]; then
-  echo "== Python 3 packages =="
-  PY3="$(command -v python3.11 2>/dev/null || command -v python3)"
+# ── Python 3 packages (venv) ─────────────────────────────────────────────────
+echo "== Python 3 packages =="
+if [[ -x "$VENV_PY" ]]; then
   for pkg in faster_whisper google.generativeai pyaudio pygame numpy scipy; do
-    if "$PY3" -c "import ${pkg}" >/dev/null 2>&1; then
+    if "$VENV_PY" -c "import ${pkg}" >/dev/null 2>&1; then
       ok "import ${pkg}"
     else
-      fail "cannot import ${pkg} — re-run post-create or: pip install -r .devcontainer/requirements.txt"
+      fail "cannot import ${pkg} — run: make install"
     fi
   done
-  if "$PY3" -c "import ctranslate2" >/dev/null 2>&1; then
+  if "$VENV_PY" -c "import ctranslate2" >/dev/null 2>&1; then
     ok "import ctranslate2"
-    CUDA_N="$($PY3 -c 'import ctranslate2; print(ctranslate2.get_cuda_device_count())' 2>/dev/null || echo 0)"
+    CUDA_N="$($VENV_PY -c 'import ctranslate2; print(ctranslate2.get_cuda_device_count())' 2>/dev/null || echo 0)"
     if [[ "$CUDA_N" -gt 0 ]]; then
       ok "CUDA devices: $CUDA_N (Whisper will use GPU)"
     else
-      warn "CUDA devices: 0 — Whisper will use CPU (install NVIDIA driver + rebuild with --gpus all for GPU)"
+      warn "CUDA devices: 0 — Whisper will use CPU (Linux GPU: make install-cuda)"
     fi
   else
-    fail "cannot import ctranslate2 — pip install -r .devcontainer/requirements.txt"
+    fail "cannot import ctranslate2 — run: make install"
   fi
-  echo ""
+else
+  fail "skip package imports — create venv with: make setup"
 fi
+echo ""
 
 # ── Summary ──────────────────────────────────────────────────────────────────
 echo "────────────────────────────────────────"
 echo "  OK=$PASS  WARN=$WARN  FAIL=$FAIL"
 if [[ "$FAIL" -eq 0 ]]; then
-  if [[ "$IN_CONTAINER" -eq 1 ]]; then
-    echo "  STATUS: READY to run"
+  echo "  STATUS: READY to run"
+  echo "    make run-listener"
+  echo "    # or: source .venv/bin/activate && python listener_gemini_live.py"
+  if command -v python2 >/dev/null 2>&1 || command -v python2.7 >/dev/null 2>&1; then
     echo "    python2 pepper_main.py"
-    echo "    python3 listener_gemini_live.py"
-  else
-    echo "  STATUS: READY for Dev Container"
-    echo "    Open in Cursor/VS Code → Dev Containers: Reopen in Container"
-    echo "    Then run: make check"
   fi
   exit 0
 else

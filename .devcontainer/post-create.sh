@@ -6,7 +6,13 @@ cd /workspaces/Pepper 2>/dev/null || cd "$(dirname "$0")/.."
 
 echo "==> Installing Python 3 dependencies (incl. CUDA libs for Whisper)..."
 python3.11 -m pip install --upgrade pip
-python3.11 -m pip install -r .devcontainer/requirements.txt
+# Prefer repo-root requirements (local venv workflow); fall back for old layouts.
+if [[ -f requirements.txt ]]; then
+  python3.11 -m pip install -r requirements.txt
+  [[ -f requirements-cuda.txt ]] && python3.11 -m pip install -r requirements-cuda.txt || true
+else
+  python3.11 -m pip install -r .devcontainer/requirements.txt
+fi
 
 # Report GPU visibility (optional — falls back to CPU if none)
 if command -v nvidia-smi >/dev/null 2>&1; then

@@ -1,14 +1,3 @@
-# Python 3.11 — listener_gemini_live.py
-faster-whisper
-google-generativeai
-pyaudio
-pygame
-keyboard
-numpy
-scipy
-ctranslate2
-edge-tts
-huggingface_hub
-# CUDA runtime libs for Whisper CT2 (GPU). Safe on CPU-only hosts; unused if no GPU.
-nvidia-cublas-cu12
-nvidia-cudnn-cu12
+# Kept for legacy Dev Container builds — prefer repo-root requirements.txt
+-r ../requirements.txt
+-r ../requirements-cuda.txt
