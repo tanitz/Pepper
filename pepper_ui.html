@@ -5,157 +5,583 @@
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
   body {
-    background:#000;
     display:flex;
-    flex-direction:column;
     justify-content:center;
     align-items:center;
+    background:#171b22;
     height:100vh;
-    font-family:sans-serif;
-    gap:0;
-    padding-bottom:110px;   /* กันที่ให้ปุ่ม Stop ด้านล่าง ไม่ให้ข้อความทับ */
+    padding:16px;
+    color:#fff;
+    font-family:Arial, sans-serif;
+    overflow:hidden;
   }
-  .lang-bar {
-    position:fixed;
-    top:0; left:0; right:0;
+  .camera-panel {
+    position:relative;
+    width:100%;
+    height:100%;
+    border:2px solid #333943;
+    border-radius:18px;
+    background:#090a0c;
+    overflow:hidden;
+    box-shadow:0 12px 42px #000b, inset 0 0 0 1px #ffffff0b;
+  }
+  .camera-title {
+    position:absolute;
+    top:0;
+    left:0;
+    right:0;
+    height:58px;
     display:flex;
-    justify-content:center;
     align-items:center;
-    gap:16px;
-    padding:14px 20px;
-    background:#111;
-    border-bottom:1px solid #333;
-    z-index:10;
-  }
-  .lang-btn {
-    background:#222;
-    color:#aaa;
-    border:2px solid #444;
-    border-radius:10px;
+    padding:0 18px;
+    color:#e8eaf0;
+    background:linear-gradient(#242933, #191d24);
+    border-bottom:1px solid #333943;
     font-size:20px;
     font-weight:bold;
-    padding:8px 28px;
+    letter-spacing:0.3px;
+    z-index:4;
+  }
+  .camera-dot {
+    width:11px;
+    height:11px;
+    margin-left:10px;
+    border-radius:50%;
+    background:#626872;
+    box-shadow:0 0 8px #626872;
+  }
+  .camera-dot.online {
+    background:#55df72;
+    box-shadow:0 0 11px #55df72;
+  }
+  .face-count {
+    margin-left:10px;
+    color:#9fa7b2;
+    font-size:14px;
+    font-weight:normal;
+  }
+  .header-actions {
+    display:flex;
+    align-items:center;
+    margin-left:auto;
+  }
+  .lang-btn {
+    min-width:54px;
+    margin-left:8px;
+    padding:6px 12px;
+    border:1px solid #4a515d;
+    border-radius:9px;
+    background:#292f39;
+    color:#aeb5c0;
+    font-size:16px;
+    font-weight:bold;
     cursor:pointer;
-    letter-spacing:2px;
-    transition: all 0.2s;
   }
   .lang-btn.active {
-    background:#1a4fff;
+    border-color:#64bfff;
+    background:#234d70;
     color:#fff;
-    border-color:#1a6fff;
-    box-shadow:0 0 16px #1a6fff88;
+    box-shadow:0 0 10px #45aef755;
   }
-  .lang-btn:active { transform:scale(0.96); }
-  .container {
+  .lang-btn:active { transform:scale(0.95); }
+  .camera-frame {
+    position:absolute;
+    top:58px;
+    right:8px;
+    bottom:8px;
+    left:8px;
     display:flex;
-    flex-direction:column;
+    justify-content:center;
     align-items:center;
-    gap:36px;
-    margin-top:80px;
+    border:1px solid #272c34;
+    border-radius:12px;
+    background:#000;
+    overflow:hidden;
+  }
+  #camera-image {
+    visibility:hidden;
+    width:100%;
+    height:100%;
+    object-fit:contain;
+  }
+  .camera-offline {
+    position:absolute;
+    color:#d9dce2;
+    font-size:22px;
+    text-align:center;
+    line-height:1.65;
+    text-shadow:0 2px 8px #000;
+  }
+  .camera-offline small { color:#9ba1ab; font-size:17px; }
+  .face-layer {
+    position:absolute;
+    top:0;
+    left:0;
+    width:0;
+    height:0;
+    pointer-events:none;
+    z-index:2;
+  }
+  .face-box {
+    position:absolute;
+    border:3px solid #39e66f;
+    border-radius:8px;
+    box-shadow:0 0 13px #39e66faa, inset 0 0 8px #39e66f44;
+    transition:left 0.12s linear, top 0.12s linear,
+               width 0.12s linear, height 0.12s linear;
+  }
+  .face-name {
+    position:absolute;
+    top:0;
+    left:0;
+    max-width:100%;
+    padding:4px 9px;
+    overflow:hidden;
+    border-radius:0 0 7px 0;
+    background:#24b855;
+    color:#fff;
+    font-size:17px;
+    font-weight:bold;
+    line-height:1.2;
+    text-overflow:ellipsis;
+    text-shadow:0 1px 2px #0008;
+    white-space:nowrap;
+  }
+  .capture-btn {
+    position:absolute;
+    top:50%;
+    right:22px;
+    width:64px;
+    height:64px;
+    transform:translateY(-50%);
+    border:2px solid #b8c4d1;
+    border-radius:50%;
+    background:rgba(35,44,56,0.9);
+    box-shadow:0 5px 18px #000a, inset 0 1px 0 #ffffff4d;
+    cursor:pointer;
+    z-index:5;
+  }
+  .capture-btn:active { transform:translateY(-50%) scale(0.94); }
+  .capture-btn:disabled { opacity:0.45; }
+  .capture-icon {
+    position:absolute;
+    top:21px;
+    left:15px;
+    width:30px;
+    height:22px;
+    border:2px solid #fff;
+    border-radius:4px;
+  }
+  .capture-icon:before {
+    content:"";
+    position:absolute;
+    top:4px;
+    left:8px;
+    width:10px;
+    height:10px;
+    border:2px solid #fff;
+    border-radius:50%;
+  }
+  .capture-icon:after {
+    content:"";
+    position:absolute;
+    top:-7px;
+    left:5px;
+    width:13px;
+    height:5px;
+    border:2px solid #fff;
+    border-bottom:0;
+    border-radius:3px 3px 0 0;
+  }
+  .countdown-overlay {
+    display:none;
+    position:absolute;
+    top:0;
+    right:0;
+    bottom:0;
+    left:0;
+    justify-content:center;
+    align-items:center;
+    background:rgba(0,0,0,0.38);
+    color:#fff;
+    font-size:150px;
+    font-weight:bold;
+    text-shadow:0 5px 25px #000;
+    z-index:8;
+  }
+  .enroll-modal {
+    display:none;
+    position:fixed;
+    top:0;
+    right:0;
+    bottom:0;
+    left:0;
+    justify-content:center;
+    align-items:flex-start;
+    padding:10px 16px;
+    background:rgba(0,0,0,0.78);
+    overflow-y:auto;
+    z-index:10;
+  }
+  .enroll-card {
+    position:relative;
+    width:760px;
+    max-width:96%;
+    max-height:calc(100vh - 20px);
+    padding:16px;
+    border:1px solid #58616d;
+    border-radius:16px;
+    background:#20252d;
+    box-shadow:0 14px 50px #000;
+    overflow-y:auto;
+  }
+  .enroll-close {
+    position:absolute;
+    top:8px;
+    right:8px;
+    width:42px;
+    height:42px;
+    padding:0;
+    border:1px solid #66717e;
+    border-radius:50%;
+    background:#303741;
+    color:#fff;
+    font-family:Arial, sans-serif;
+    font-size:29px;
+    line-height:37px;
+    text-align:center;
+    cursor:pointer;
+  }
+  .enroll-close:active { background:#8b2631; transform:scale(0.94); }
+  .enroll-close:disabled { opacity:0.4; cursor:default; }
+  .enroll-title {
+    margin-bottom:10px;
+    font-size:24px;
+    font-weight:bold;
+    text-align:center;
+  }
+  .enroll-body {
+    display:flex;
+    align-items:flex-start;
+  }
+  .capture-preview {
+    display:block;
+    visibility:visible;
+    flex:0 0 44%;
+    width:44%;
+    height:220px;
+    max-height:32vh;
+    border:1px solid #414954;
+    border-radius:10px;
+    background:#000;
+    object-fit:contain;
+  }
+  .enroll-form {
+    flex:1;
+    min-width:0;
+    margin-left:16px;
+  }
+  .enroll-hint {
+    margin:2px 0 10px;
+    color:#bfc6d0;
+    font-size:15px;
+    text-align:center;
+  }
+  .face-name-input {
+    width:100%;
+    height:50px;
+    padding:0 14px;
+    border:2px solid #4e5968;
+    border-radius:10px;
+    outline:none;
+    background:#11151a;
+    color:#fff;
+    font-size:22px;
+  }
+  .face-name-input:focus { border-color:#54bfff; }
+  .enroll-message {
+    min-height:24px;
+    margin-top:8px;
+    color:#ffb35c;
+    font-size:16px;
+    text-align:center;
+  }
+  .enroll-actions {
+    display:flex;
+    margin-top:8px;
+  }
+  .enroll-action {
+    flex:1;
+    height:48px;
+    border:0;
+    border-radius:10px;
+    color:#fff;
+    font-size:19px;
+    font-weight:bold;
+    cursor:pointer;
+  }
+  .retake-btn { margin-right:8px; background:#515a67; }
+  .save-face-btn { margin-left:8px; background:#159447; }
+  .enroll-action:disabled { opacity:0.45; }
+  .status-stack {
+    position:absolute;
+    left:50%;
+    bottom:28px;
+    width:84%;
+    max-width:900px;
+    transform:translateX(-50%);
+    text-align:center;
+    z-index:3;
+  }
+  .status-pill {
+    display:inline-flex;
+    align-items:center;
+    min-width:220px;
+    max-width:100%;
+    height:66px;
+    padding:7px 24px 7px 8px;
+    border:1px solid #798493;
+    border-radius:36px;
+    background:linear-gradient(100deg, rgba(38,87,119,0.96), rgba(77,82,93,0.96));
+    box-shadow:0 6px 20px #0009, inset 0 1px 0 #ffffff44;
   }
   .circle {
-    width:221px;    /* 260 - 15% */
-    height:221px;
+    width:50px;
+    height:50px;
+    flex:none;
     border-radius:50%;
     display:flex;
     justify-content:center;
     align-items:center;
-    transition: background 0.5s, box-shadow 0.5s;
+    transition:background 0.3s, box-shadow 0.3s;
   }
   .circle.listening {
-    background: radial-gradient(circle, #1a6fff, #003baa);
-    box-shadow: 0 0 60px #1a6fff, 0 0 120px #1a6fff55;
+    background:radial-gradient(circle, #78d3ff, #257caf);
+    box-shadow:0 0 15px #62c9ff99;
     animation: pulse 2s infinite;
   }
   .circle.speaking {
-    background: radial-gradient(circle, #ff4e1a, #aa1a00);
-    box-shadow: 0 0 60px #ff4e1a, 0 0 120px #ff4e1a55;
+    background:radial-gradient(circle, #ff966f, #d44a25);
+    box-shadow:0 0 15px #ff724999;
     animation: pulse 0.6s infinite;
   }
   .circle.waiting {
-    background: radial-gradient(circle, #aaaa00, #555500);
-    box-shadow: 0 0 60px #cccc00, 0 0 120px #cccc0044;
+    background:radial-gradient(circle, #ffe66c, #b89518);
+    box-shadow:0 0 15px #ffe04488;
     animation: pulse 1.2s infinite;
   }
   @keyframes pulse {
-    0%   { transform: scale(1);    }
-    50%  { transform: scale(1.08); }
-    100% { transform: scale(1);    }
+    0% { transform:scale(1); }
+    50% { transform:scale(1.07); }
+    100% { transform:scale(1); }
   }
-  .icon { font-size:76px; }   /* ย่อตามวงกลม */
-  .label {
-    color:#fff;
-    font-size:42px;
-    font-weight:bold;
-    letter-spacing:3px;
+  /* CSS-only status icons: no emoji/font dependency on Pepper's old WebView. */
+  .icon {
+    position:relative;
+    display:block;
+    width:26px;
+    height:31px;
   }
-  .label.listening { color:#6af; }
-  .label.speaking  { color:#f84; }
-  .label.waiting   { color:#ff0; }
-  .reset-btn {
+  .circle.listening .icon {
+    background:
+      linear-gradient(#fff, #fff) center 24px / 2px 6px no-repeat,
+      linear-gradient(#fff, #fff) center bottom / 13px 2px no-repeat;
+  }
+  .circle.listening .icon:before {
+    content:"";
     position:absolute;
-    right:20px;
-    top:50%;
-    transform:translateY(-50%);
-    background:#333;
-    color:#fff;
-    border:2px solid #555;
+    top:0;
+    left:8px;
+    width:10px;
+    height:18px;
+    border:2px solid #fff;
     border-radius:8px;
-    font-size:18px;
-    padding:8px 20px;
-    cursor:pointer;
   }
-  .reset-btn:active { background:#c00; border-color:#f44; }
-  .speech-box {
-    display:none;
-    color:#fff;
-    font-size:26px;
-    text-align:center;
-    line-height:1.5;
-    max-width:90%;
-    max-height:24vh;        /* จำกัดความสูง ไม่ให้ยาวลงไปชนปุ่ม Stop */
+  .circle.listening .icon:after {
+    content:"";
+    position:absolute;
+    top:9px;
+    left:4px;
+    width:18px;
+    height:14px;
+    border-right:2px solid #fff;
+    border-bottom:2px solid #fff;
+    border-left:2px solid #fff;
+    border-radius:0 0 11px 11px;
+  }
+  .circle.speaking .icon {
+    width:29px;
+    height:28px;
+    background:none;
+  }
+  .circle.speaking .icon:before {
+    content:"";
+    position:absolute;
+    top:9px;
+    left:1px;
+    width:8px;
+    height:11px;
+    border-radius:2px;
+    background:#fff;
+  }
+  .circle.speaking .icon:after {
+    content:"";
+    position:absolute;
+    top:4px;
+    left:8px;
+    width:0;
+    height:0;
+    border-top:10px solid transparent;
+    border-bottom:10px solid transparent;
+    border-right:0;
+    border-left:13px solid #fff;
+  }
+  .circle.waiting .icon {
+    width:22px;
+    height:6px;
+    background:none;
+  }
+  .circle.waiting .icon:before {
+    content:"";
+    position:absolute;
+    top:0;
+    left:0;
+    width:6px;
+    height:6px;
+    border-radius:50%;
+    background:#fff;
+    box-shadow:8px 0 0 #fff, 16px 0 0 #fff;
+    animation:dots 1s infinite alternate;
+  }
+  .circle.waiting .icon:after { content:none; }
+  @keyframes dots {
+    from { opacity:0.35; }
+    to { opacity:1; }
+  }
+  .label {
+    flex:1;
+    min-width:0;
+    margin-left:14px;
+    color:#f5f7fb;
+    font-size:22px;
+    font-weight:normal;
+    letter-spacing:0;
+    white-space:nowrap;
     overflow:hidden;
-    padding:16px 24px;
-    border:2px solid #ff4e1a44;
-    border-radius:16px;
-    background:#ffffff0f;
-    margin-top:24px;
+    text-overflow:ellipsis;
+  }
+  .label-text {
+    display:inline-block;
+    white-space:nowrap;
+  }
+  .label.scrolling .label-text {
+    padding-left:100%;
+    animation:marquee-text 6s linear 1 forwards;
+    -webkit-animation:marquee-text 6s linear 1 forwards;
+  }
+  @keyframes marquee-text {
+    from { transform:translateX(0); }
+    to { transform:translateX(-100%); }
+  }
+  @-webkit-keyframes marquee-text {
+    from { -webkit-transform:translateX(0); }
+    to { -webkit-transform:translateX(-100%); }
   }
   .stop-btn {
     display:none;
-    position:fixed;
-    bottom:28px;
-    left:50%;
-    transform:translateX(-50%);
-    background:#c00;
+    width:44px;
+    height:44px;
+    flex:none;
+    margin-left:12px;
+    padding:0 0 3px;
+    border:1px solid #ff8b8b;
+    border-radius:50%;
+    background:rgba(176,30,42,0.9);
     color:#fff;
-    border:none;
-    border-radius:50px;
-    font-size:24px;
-    font-weight:bold;
-    padding:14px 52px;
+    font-family:Arial, sans-serif;
+    font-size:30px;
+    font-weight:normal;
+    line-height:40px;
     cursor:pointer;
-    letter-spacing:2px;
-    box-shadow:0 0 24px #ff000066;
-    z-index:10;
+    box-shadow:0 4px 16px #0009;
   }
-  .stop-btn:active { background:#900; transform:translateX(-50%) scale(0.95); }
+  .stop-btn:active { background:#84151e; transform:scale(0.95); }
+  @media (max-width:700px) {
+    body { padding:7px; }
+    .camera-title { height:50px; padding:0 10px; font-size:16px; }
+    .camera-frame { top:50px; right:5px; bottom:5px; left:5px; }
+    .lang-btn { min-width:42px; margin-left:5px; padding:5px 7px; font-size:13px; }
+    .face-count { display:none; }
+    .face-box { border-width:2px; }
+    .face-name { padding:3px 6px; font-size:13px; }
+    .capture-btn { right:10px; width:52px; height:52px; }
+    .capture-icon { top:17px; left:12px; transform:scale(0.85); }
+    .countdown-overlay { font-size:100px; }
+    .enroll-modal { padding:5px; }
+    .enroll-card { max-width:98%; max-height:calc(100vh - 10px); padding:10px; }
+    .enroll-title { margin-bottom:8px; font-size:19px; }
+    .capture-preview { flex-basis:40%; width:40%; height:145px; max-height:28vh; }
+    .enroll-form { margin-left:10px; }
+    .enroll-hint { margin:1px 0 5px; font-size:12px; }
+    .face-name-input { height:42px; font-size:18px; }
+    .enroll-action { height:42px; font-size:16px; }
+    .status-stack { bottom:14px; width:88%; }
+    .status-pill { min-width:180px; height:54px; padding-right:18px; }
+    .circle { width:40px; height:40px; }
+    .icon { transform:scale(0.82); }
+    .label { margin-left:10px; font-size:18px; }
+    .stop-btn { width:38px; height:38px; margin-left:8px; font-size:26px; line-height:34px; }
+  }
 </style>
 </head>
 <body>
-<div class="lang-bar">
-  <button id="btn-th" class="lang-btn active" onclick="setLang('th')">&#x1F1F9;&#x1F1ED;&nbsp;TH</button>
-  <button id="btn-en" class="lang-btn"        onclick="setLang('en')">&#x1F1FA;&#x1F1F8;&nbsp;EN</button>
-  <button class="reset-btn" onclick="doReset()">&#x21BA; Reset</button>
-</div>
-<div class="container">
-  <div class="circle listening" id="circle">
-    <span class="icon" id="icon">&#x1F3A4;</span>
+<main class="camera-panel">
+  <div class="camera-title">
+    <span>Pepper Camera</span>
+    <span class="camera-dot" id="camera-dot"></span>
+    <span class="face-count" id="face-count">7 known</span>
+    <div class="header-actions">
+      <button id="btn-th" class="lang-btn active" onclick="setLang('th')">TH</button>
+      <button id="btn-en" class="lang-btn" onclick="setLang('en')">EN</button>
+    </div>
   </div>
-  <div class="label listening" id="label">&#x1F3A4;&nbsp;Listening...</div>
-  <div class="speech-box" id="speech-box"></div>
-</div>
-<button class="stop-btn" id="stop-btn" onclick="doReset()">&#x23F9; Stop</button>
+  <div class="camera-frame">
+    <img id="camera-image" alt="Pepper camera">
+    <div class="face-layer" id="face-layer"></div>
+    <button class="capture-btn" id="capture-btn" onclick="startFaceCapture()" title="Register face">
+      <span class="capture-icon"></span>
+    </button>
+    <div class="countdown-overlay" id="countdown-overlay">3</div>
+    <div class="enroll-modal" id="enroll-modal">
+      <div class="enroll-card">
+        <button class="enroll-close" id="enroll-close" onclick="closeEnrollModal()" title="Cancel">&times;</button>
+        <div class="enroll-title">Register Face</div>
+        <div class="enroll-body">
+          <img class="capture-preview" id="capture-preview" alt="Captured face">
+          <div class="enroll-form">
+            <div class="enroll-hint">Keep facing Pepper until Save completes.</div>
+            <input class="face-name-input" id="face-name-input" type="text" maxlength="50" placeholder="Enter name">
+            <div class="enroll-message" id="enroll-message"></div>
+            <div class="enroll-actions">
+              <button class="enroll-action retake-btn" id="retake-btn" onclick="retakeFace()">Retake</button>
+              <button class="enroll-action save-face-btn" id="save-face-btn" onclick="saveFace()">Save Face</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="camera-offline" id="camera-offline">Pepper camera unavailable<br><small>Retrying...</small></div>
+    <div class="status-stack">
+      <div class="status-pill">
+        <div class="circle listening" id="circle">
+          <span class="icon" id="icon"></span>
+        </div>
+        <div class="label listening" id="label"><span class="label-text" id="label-text">Listening...</span></div>
+        <button class="stop-btn" id="stop-btn" onclick="doReset()" title="Stop">&times;</button>
+      </div>
+    </div>
+  </div>
+</main>
 <script>
 var currentLang = 'th';
 var LABELS = {
@@ -184,13 +610,33 @@ function doReset() {
 
 /* แสดงข้อความที่ Pepper กำลังพูด + ยืนยันกลับด้วย seq เพื่อให้เสียงเริ่มหลังข้อความขึ้นจอ */
 var shownSeq = -1;
+var speechPollToken = 0;
+
+function setLabelText(text, scrollIfLong, speechDuration) {
+  var label = document.getElementById('label');
+  var labelText = document.getElementById('label-text');
+  label.className = label.className.replace(/\s+scrolling/g, '');
+  labelText.style.animationDuration = '';
+  labelText.style.webkitAnimationDuration = '';
+  labelText.textContent = text;
+  if (!scrollIfLong) return;
+  var measuredDuration = parseFloat(speechDuration);
+  var baseSeconds = measuredDuration > 0
+    ? Math.max(2, measuredDuration)
+    : Math.max(3, Math.min(15, text.length * 0.07));
+  var seconds = baseSeconds * 1.25;
+  labelText.style.animationDuration = seconds + 's';
+  labelText.style.webkitAnimationDuration = seconds + 's';
+  label.className += ' scrolling';
+}
+
 function updateSpeech(busy) {
-  var box  = document.getElementById('speech-box');
   var stop = document.getElementById('stop-btn');
+  var label = document.getElementById('label');
+  var requestToken = ++speechPollToken;
   stop.style.display = busy ? 'block' : 'none';
   if (!busy) {
-    box.style.display = 'none';
-    box.textContent = '';
+    label.removeAttribute('title');
     shownSeq = -1;
     return;
   }
@@ -198,18 +644,18 @@ function updateSpeech(busy) {
   xhr.open('GET', '/speak_info', true);
   xhr.onreadystatechange = function() {
     if (xhr.readyState !== 4 || xhr.status !== 200) return;
-    var i = xhr.responseText.indexOf('\n');
-    if (i < 0) return;
-    var seq = parseInt(xhr.responseText.substring(0, i), 10);
-    var txt = xhr.responseText.substring(i + 1);
-    if (!txt) {                      /* ยังไม่มีข้อความของรอบนี้ → ไม่โชว์ของเก่าค้าง */
-      box.style.display = 'none';
-      box.textContent = '';
-      return;
-    }
-    box.textContent = txt;
-    box.style.display = 'block';
+    if (requestToken !== speechPollToken) return;
+    var firstBreak = xhr.responseText.indexOf('\n');
+    var secondBreak = xhr.responseText.indexOf('\n', firstBreak + 1);
+    if (firstBreak < 0 || secondBreak < 0) return;
+    var seq = parseInt(xhr.responseText.substring(0, firstBreak), 10);
+    var duration = parseFloat(xhr.responseText.substring(firstBreak + 1, secondBreak));
+    var txt = xhr.responseText.substring(secondBreak + 1);
+    if (!txt) return;
+    if (duration === 0) return;  /* MP3 is still loading; retry on the next poll. */
     if (seq !== shownSeq) {
+      setLabelText(txt, true, duration);
+      label.setAttribute('title', txt);
       shownSeq = seq;
       var p = new XMLHttpRequest();
       p.open('GET', '/page_ready?seq=' + seq, true);
@@ -231,19 +677,21 @@ function checkStatus() {
     updateSpeech(status === 'busy');
     if (status === 'wait' || status === 'drain') {
       circle.className = 'circle waiting';
-      icon.innerHTML   = '&#x23F3;';
       label.className  = 'label waiting';
-      label.innerHTML  = 'WAIT...';
+      setLabelText('Wait...', false);
     } else if (status === 'busy') {
       circle.className = 'circle speaking';
-      icon.innerHTML   = '&#x1F50A;';
-      label.className  = 'label speaking';
-      label.innerHTML  = '&#x1F50A;&nbsp;' + LABELS[currentLang].speak;
+      if (shownSeq < 0) {
+        label.className = 'label speaking';
+        setLabelText(LABELS[currentLang].speak, false);
+      } else {
+        label.className = 'label speaking' +
+          (label.className.indexOf('scrolling') >= 0 ? ' scrolling' : '');
+      }
     } else {
       circle.className = 'circle listening';
-      icon.innerHTML   = '&#x1F3A4;';
       label.className  = 'label listening';
-      label.innerHTML  = '&#x1F3A4;&nbsp;' + LABELS[currentLang].listen;
+      setLabelText(LABELS[currentLang].listen, false);
     }
   };
   xhr.send();
@@ -263,8 +711,264 @@ function syncLang() {
   xhr.send();
 }
 
+/* Refresh only after the previous camera frame finished loading. */
+var cameraImage = document.getElementById('camera-image');
+var cameraOffline = document.getElementById('camera-offline');
+var cameraDot = document.getElementById('camera-dot');
+var cameraFrame = document.querySelector('.camera-frame');
+var faceLayer = document.getElementById('face-layer');
+var faceCount = document.getElementById('face-count');
+var captureButton = document.getElementById('capture-btn');
+var countdownOverlay = document.getElementById('countdown-overlay');
+var enrollModal = document.getElementById('enroll-modal');
+var enrollCloseButton = document.getElementById('enroll-close');
+var capturePreview = document.getElementById('capture-preview');
+var faceNameInput = document.getElementById('face-name-input');
+var enrollMessage = document.getElementById('enroll-message');
+var retakeButton = document.getElementById('retake-btn');
+var saveFaceButton = document.getElementById('save-face-btn');
+var cameraTimer = null;
+/* Small pause prevents a tight retry loop while keeping preview latency low. */
+var cameraFrameDelayMs = 50;
+var faceRequestBusy = false;
+var faceCaptureBusy = false;
+var activeCaptureId = 0;
+
+function showEnrollError(message) {
+  countdownOverlay.style.display = 'none';
+  enrollMessage.textContent = message || 'Unable to capture face.';
+  enrollModal.style.display = 'flex';
+  retakeButton.disabled = false;
+  saveFaceButton.disabled = !activeCaptureId;
+  enrollCloseButton.disabled = false;
+  captureButton.disabled = false;
+  faceCaptureBusy = false;
+}
+
+function requestFaceSnapshot() {
+  var xhr = new XMLHttpRequest();
+  xhr.open('GET', '/capture_face?_=' + new Date().getTime(), true);
+  xhr.onreadystatechange = function() {
+    if (xhr.readyState !== 4) return;
+    if (xhr.status !== 200) {
+      showEnrollError('Camera capture failed. Tap Retake.');
+      return;
+    }
+    try {
+      var result = JSON.parse(xhr.responseText);
+      if (!result.ok) throw new Error(result.message || 'Capture failed');
+      activeCaptureId = result.capture_id;
+      capturePreview.src = '/face_capture.bmp?id=' + activeCaptureId + '&_=' + new Date().getTime();
+      faceNameInput.value = '';
+      enrollMessage.style.color = '#ffb35c';
+      enrollMessage.textContent = '';
+      countdownOverlay.style.display = 'none';
+      enrollModal.style.display = 'flex';
+      retakeButton.disabled = false;
+      saveFaceButton.disabled = false;
+      enrollCloseButton.disabled = false;
+      captureButton.disabled = false;
+      faceCaptureBusy = false;
+      setTimeout(function() { faceNameInput.focus(); }, 150);
+    } catch (e) {
+      showEnrollError(e.message);
+    }
+  };
+  xhr.send();
+}
+
+function startFaceCapture() {
+  if (faceCaptureBusy) return;
+  faceCaptureBusy = true;
+  activeCaptureId = 0;
+  enrollModal.style.display = 'none';
+  captureButton.disabled = true;
+  countdownOverlay.style.display = 'flex';
+  var count = 3;
+  countdownOverlay.textContent = count;
+  function tick() {
+    count--;
+    if (count > 0) {
+      countdownOverlay.textContent = count;
+      setTimeout(tick, 1000);
+    } else {
+      countdownOverlay.textContent = '';
+      requestFaceSnapshot();
+    }
+  }
+  setTimeout(tick, 1000);
+}
+
+function retakeFace() {
+  closeEnrollModal();
+  startFaceCapture();
+}
+
+function closeEnrollModal() {
+  enrollModal.style.display = 'none';
+  activeCaptureId = 0;
+  faceNameInput.value = '';
+  enrollMessage.textContent = '';
+  enrollMessage.style.color = '#ffb35c';
+  capturePreview.removeAttribute('src');
+  retakeButton.disabled = false;
+  saveFaceButton.disabled = false;
+  enrollCloseButton.disabled = false;
+  captureButton.disabled = false;
+}
+
+function saveFace() {
+  var name = faceNameInput.value.replace(/^\s+|\s+$/g, '');
+  if (!name) {
+    enrollMessage.textContent = 'Please enter a name.';
+    faceNameInput.focus();
+    return;
+  }
+  if (!activeCaptureId) {
+    enrollMessage.textContent = 'Please retake the photo.';
+    return;
+  }
+  enrollMessage.textContent = 'Saving face...';
+  retakeButton.disabled = true;
+  saveFaceButton.disabled = true;
+  enrollCloseButton.disabled = true;
+  var xhr = new XMLHttpRequest();
+  xhr.open('GET', '/learn_face?id=' + activeCaptureId + '&name=' + encodeURIComponent(name), true);
+  xhr.onreadystatechange = function() {
+    if (xhr.readyState !== 4) return;
+    var result = null;
+    try { result = JSON.parse(xhr.responseText); } catch (e) {}
+    if (xhr.status === 200 && result && result.ok) {
+      enrollMessage.style.color = '#68e58f';
+      enrollMessage.textContent = result.message || 'Face saved successfully.';
+      if (typeof result.known_count === 'number') {
+        faceCount.textContent = result.known_count + ' known';
+      }
+      setTimeout(function() {
+        closeEnrollModal();
+      }, 1400);
+    } else {
+      enrollMessage.style.color = '#ff8c8c';
+      enrollMessage.textContent = result && result.message
+        ? result.message : 'Unable to learn this face. Retake and try again.';
+      retakeButton.disabled = false;
+      saveFaceButton.disabled = false;
+      enrollCloseButton.disabled = false;
+    }
+  };
+  xhr.send();
+}
+
+faceNameInput.onkeyup = function(event) {
+  event = event || window.event;
+  if ((event.keyCode || event.which) === 13) saveFace();
+};
+
+/* Match the overlay to the actual 4:3 image inside object-fit:contain. */
+function updateFaceLayerGeometry() {
+  var frameWidth = cameraFrame.clientWidth;
+  var frameHeight = cameraFrame.clientHeight;
+  if (!frameWidth || !frameHeight) return;
+  var imageRatio = 4 / 3;
+  var frameRatio = frameWidth / frameHeight;
+  var width, height, left, top;
+  if (frameRatio > imageRatio) {
+    height = frameHeight;
+    width = height * imageRatio;
+    left = (frameWidth - width) / 2;
+    top = 0;
+  } else {
+    width = frameWidth;
+    height = width / imageRatio;
+    left = 0;
+    top = (frameHeight - height) / 2;
+  }
+  faceLayer.style.left = left + 'px';
+  faceLayer.style.top = top + 'px';
+  faceLayer.style.width = width + 'px';
+  faceLayer.style.height = height + 'px';
+}
+
+function renderFaces(faces) {
+  while (faceLayer.firstChild) faceLayer.removeChild(faceLayer.firstChild);
+  if (!faces || typeof faces.length === 'undefined') return;
+  for (var i = 0; i < faces.length; i++) {
+    var face = faces[i];
+    /* Expand each detection box by 40%, keeping its original centre. */
+    var expandedWidth = face.w * 1.4;
+    var expandedHeight = face.h * 1.4;
+    var expandedLeft = face.x - (expandedWidth - face.w) / 2;
+    var expandedTop = face.y - (expandedHeight - face.h) / 2;
+    var left = Math.max(0, expandedLeft);
+    var top = Math.max(0, expandedTop);
+    var right = Math.min(1, expandedLeft + expandedWidth);
+    var bottom = Math.min(1, expandedTop + expandedHeight);
+    var box = document.createElement('div');
+    box.className = 'face-box';
+    box.style.left = (left * 100) + '%';
+    box.style.top = (top * 100) + '%';
+    box.style.width = ((right - left) * 100) + '%';
+    box.style.height = ((bottom - top) * 100) + '%';
+    var name = document.createElement('div');
+    name.className = 'face-name';
+    name.textContent = face.name || 'Unknown';
+    box.appendChild(name);
+    faceLayer.appendChild(box);
+  }
+}
+
+function refreshFaces() {
+  if (faceRequestBusy) return;
+  faceRequestBusy = true;
+  var xhr = new XMLHttpRequest();
+  xhr.open('GET', '/face_info?_=' + new Date().getTime(), true);
+  xhr.onreadystatechange = function() {
+    if (xhr.readyState !== 4) return;
+    faceRequestBusy = false;
+    if (xhr.status !== 200) return;
+    try {
+      var info = JSON.parse(xhr.responseText);
+      renderFaces(info.faces);
+      if (typeof info.known_count === 'number') {
+        faceCount.textContent = info.known_count + ' known';
+      }
+    } catch (e) {
+      renderFaces([]);
+    }
+  };
+  xhr.send();
+}
+
+function loadCameraFrame() {
+  cameraImage.src = '/camera.bmp?_=' + new Date().getTime();
+}
+
+cameraImage.onload = function() {
+  cameraImage.style.visibility = 'visible';
+  cameraOffline.style.display = 'none';
+  cameraDot.className = 'camera-dot online';
+  updateFaceLayerGeometry();
+  clearTimeout(cameraTimer);
+  cameraTimer = setTimeout(loadCameraFrame, cameraFrameDelayMs);
+};
+
+cameraImage.onerror = function() {
+  cameraImage.style.visibility = 'hidden';
+  cameraOffline.style.display = 'block';
+  cameraOffline.innerHTML = 'Pepper camera unavailable<br><small>Retrying...</small>';
+  cameraDot.className = 'camera-dot';
+  renderFaces([]);
+  clearTimeout(cameraTimer);
+  cameraTimer = setTimeout(loadCameraFrame, 1500);
+};
+
+window.addEventListener('resize', updateFaceLayerGeometry, false);
+
 syncLang();
+loadCameraFrame();
+refreshFaces();
 setInterval(checkStatus, 300);
+setInterval(refreshFaces, 200);
 setInterval(syncLang, 4000);
 </script>
 </body>

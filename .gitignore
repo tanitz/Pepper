@@ -21,6 +21,10 @@ speech.mp3
 command.txt
 status.txt
 query.txt
+face_greeting_event.json
+face_greeting_event.json.tmp
+config/face_greeting_state.json
+config/face_greeting_state.json.tmp
 
 # ── Old / dev files ───────────────────────────────────────────────────────────
 bin/

@@ -6,7 +6,10 @@
   "silence_threshold": 3000,
   "silence_secs": 0.8,
   "max_record_secs": 10,
-  "beam_size": 1,
+  "beam_size": 5,
   "tts_volume": "+100%",
+  "tts_gain_db": 1.0,
+  "face_greeting_enabled": true,
+  "face_greeting_reset_minutes": 10,
   "debug": false
 }

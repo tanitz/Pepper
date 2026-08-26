@@ -70,6 +70,7 @@ def cuda_runtime_available():
 
 import json, datetime, time, shutil, re, asyncio, random
 import numpy as np
+import av
 import sounddevice as sd
 import pygame, keyboard
 import ctranslate2
@@ -100,6 +101,8 @@ COMMAND_FILE = "command.txt"
 STATUS_FILE  = "status.txt"
 SPEECH_FILE  = "speech.mp3"
 QUERY_FILE   = "query.txt"
+FACE_GREETING_EVENT_FILE = os.path.join(_BASE, "face_greeting_event.json")
+FACE_GREETING_STATE_FILE = os.path.join(_BASE, "config", "face_greeting_state.json")
 AUDIO_DIR    = os.path.join(_BASE, "audio")
 SONG_DIR     = os.path.join(_BASE, "song")
 RATE         = 16000
@@ -230,6 +233,64 @@ def _valid_speech_file():
     except Exception:
         return False
 
+def _boost_tts_audio(gain_db):
+    """Increase TTS loudness while soft-limiting peaks to avoid clipping."""
+    try:
+        gain_db = float(gain_db)
+    except (TypeError, ValueError):
+        print(f"[TTS] Invalid tts_gain_db={gain_db!r}; using +6 dB", flush=True)
+        gain_db = 6.0
+    gain_db = max(0.0, min(gain_db, 12.0))
+    if gain_db == 0.0:
+        return True
+
+    temp_file = SPEECH_FILE + ".boosting.mp3"
+    try:
+        if os.path.exists(temp_file):
+            os.remove(temp_file)
+        linear_gain = 10.0 ** (gain_db / 20.0)
+        limiter_scale = np.tanh(linear_gain)
+
+        with av.open(SPEECH_FILE) as input_audio:
+            input_stream = input_audio.streams.audio[0]
+            sample_rate = input_stream.codec_context.sample_rate
+            layout = input_stream.codec_context.layout.name
+            with av.open(temp_file, "w", format="mp3") as output_audio:
+                output_stream = output_audio.add_stream("libmp3lame", rate=sample_rate)
+                output_stream.layout = layout
+                output_stream.bit_rate = 128000
+                for frame in input_audio.decode(input_stream):
+                    samples = frame.to_ndarray()
+                    if not np.issubdtype(samples.dtype, np.floating):
+                        raise TypeError(f"unsupported decoded sample format: {samples.dtype}")
+                    # About +gain_db for speech, with a smooth ceiling at 95%.
+                    boosted = np.tanh(samples * linear_gain) / limiter_scale * 0.95
+                    boosted_frame = av.AudioFrame.from_ndarray(
+                        boosted.astype(samples.dtype),
+                        format=frame.format.name,
+                        layout=frame.layout.name,
+                    )
+                    boosted_frame.sample_rate = frame.sample_rate
+                    for packet in output_stream.encode(boosted_frame):
+                        output_audio.mux(packet)
+                for packet in output_stream.encode(None):
+                    output_audio.mux(packet)
+
+        if not os.path.exists(temp_file) or os.path.getsize(temp_file) < 1024:
+            raise RuntimeError("boosted MP3 is empty")
+        pygame.mixer.music.unload()
+        os.replace(temp_file, SPEECH_FILE)
+        print(f"[TTS] Boosted AI voice by +{gain_db:g} dB", flush=True)
+        return True
+    except Exception as e:
+        print(f"[TTS] Audio boost skipped: {e}", flush=True)
+        try:
+            if os.path.exists(temp_file):
+                os.remove(temp_file)
+        except OSError:
+            pass
+        return False
+
 def download_google_tts(text, lang_code):
     url = "https://translate.google.com/translate_tts?ie=UTF-8&q={}&tl={}&client=tw-ob".format(
         urllib.parse.quote(text), lang_code
@@ -263,22 +324,27 @@ def _edge_tts_speak(text, voice, volume):
     if not _valid_speech_file():
         raise RuntimeError("edge-tts produced empty/invalid audio")
 
-def speak(text):
-    mode_key  = _TTS_MODE_KEY.get(_current_lang, "tts_mode_th")
-    tts_mode  = cfg(mode_key, _TTS_DEFAULT.get(_current_lang, "niwat"))
+def speak(text, lang_override=None):
+    target_lang = lang_override if lang_override in ("th", "en") else _current_lang
+    mode_key  = _TTS_MODE_KEY.get(target_lang, "tts_mode_th")
+    tts_mode  = cfg(mode_key, _TTS_DEFAULT.get(target_lang, "niwat"))
     tts_volume = str(cfg("tts_volume", "+100%")).strip()
     volume_match = re.match(r"^[+-](\d{1,3})%$", tts_volume)
     if not volume_match or int(volume_match.group(1)) > 100:
         print(f"[TTS] Invalid tts_volume={tts_volume!r}; using +100%", flush=True)
         tts_volume = "+100%"
-    voices    = _VOICES.get(_current_lang, _VOICES["th"])
+    voices    = _VOICES.get(target_lang, _VOICES["th"])
     if tts_mode in voices and EDGE_TTS_OK:
         try:
             _edge_tts_speak(text, voices[tts_mode], tts_volume)
+            _boost_tts_audio(cfg("tts_gain_db", 6.0))
             return True
         except Exception as e:
             print(f"edge-tts error: {e} — fallback Google TTS")
-    return download_google_tts(text, _TTS_GOOGLE_LANG.get(_current_lang, "th"))
+    success = download_google_tts(text, _TTS_GOOGLE_LANG.get(target_lang, "th"))
+    if success:
+        _boost_tts_audio(cfg("tts_gain_db", 6.0))
+    return success
 
 def _play_speech_blocking():
     # Load + play speech.mp3, guarding against invalid data so a bad TTS/song
@@ -312,26 +378,49 @@ def use_audio_file(filepath):
     return True
 
 # ── 10. Song shuffle queue ────────────────────────────────────────────────────
-_song_queue = []
-_SING_INTRO  = {"th": "ได้เลยครับเจ้านาย",               "en": "Sure thing! Here is a song for you."}
+_SONG_COUNTRIES = ("thai", "korea", "japan")
+_song_queues = {country: [] for country in _SONG_COUNTRIES}
+_SING_INTRO  = {
+    "th": "ได้เลยครับเจ้านาย",
+    "en": "Sure thing! Here is a song for you.",
+}
 _SING_EMPTY  = {"th": "ขอโทษครับ ไม่พบเพลงในโฟลเดอร์ครับ", "en": "Sorry, no songs found in the songs folder."}
 
-def pick_next_song():
-    global _song_queue
-    if not os.path.isdir(SONG_DIR):
-        print(f"[song] Folder not found: {SONG_DIR}", flush=True)
+def get_sing_country(answer):
+    """Return a requested country, or None when [SING] asks for a random one."""
+    match = re.search(r'\[SING(?:_(THAI|KOREA|JAPAN))?\]', answer, re.IGNORECASE)
+    return match.group(1).lower() if match and match.group(1) else None
+
+def pick_next_song(country=None):
+    if country not in _SONG_COUNTRIES:
+        available = [
+            item for item in _SONG_COUNTRIES
+            if os.path.isdir(os.path.join(SONG_DIR, item))
+            and any(name.lower().endswith(".mp3") for name in os.listdir(os.path.join(SONG_DIR, item)))
+        ]
+        if not available:
+            print(f"[song] No mp3 files in country folders under {SONG_DIR}", flush=True)
+            return None
+        country = random.choice(available)
+
+    country_dir = os.path.join(SONG_DIR, country)
+    if not os.path.isdir(country_dir):
+        print(f"[song] Folder not found: {country_dir}", flush=True)
         return None
-    songs = [f for f in os.listdir(SONG_DIR) if f.lower().endswith(".mp3")]
+    songs = [f for f in os.listdir(country_dir) if f.lower().endswith(".mp3")]
     if not songs:
-        print(f"[song] No mp3 files in {SONG_DIR}", flush=True)
+        print(f"[song] No mp3 files in {country_dir}", flush=True)
         return None
-    if not _song_queue:
-        _song_queue.extend(songs)
-        random.shuffle(_song_queue)
-        print(f"[song] Shuffled {len(_song_queue)} songs", flush=True)
-    chosen = _song_queue.pop(0)
-    print(f"[song] Playing: {chosen}  ({len(_song_queue)} remaining)", flush=True)
-    return os.path.join(SONG_DIR, chosen), os.path.splitext(chosen)[0]
+
+    queue = _song_queues[country]
+    if not queue or not set(queue).issubset(set(songs)):
+        queue[:] = songs
+        random.shuffle(queue)
+        print(f"[song] Shuffled {len(queue)} {country} songs", flush=True)
+    chosen = queue.pop(0)
+    # Avoid printing Unicode filenames because some Windows consoles still use cp1252.
+    print(f"[song] Playing a {country} song ({len(queue)} remaining)", flush=True)
+    return os.path.join(country_dir, chosen), os.path.splitext(chosen)[0]
 
 # ── 11. IPC: communicate with pepper_main.py ─────────────────────────────────
 def write_command(text):
@@ -352,6 +441,196 @@ def read_status():
             return f.read().strip()
     except Exception:
         return "ready"
+
+
+_FACE_GREETINGS = {
+    "th": {
+        "morning": [
+            "สวัสดีตอนเช้าครับคุณ{name} วันนี้สบายดีไหมครับ",
+            "อรุณสวัสดิ์ครับคุณ{name} มีอะไรให้ผมช่วยไหมครับ",
+            "สวัสดีตอนเช้าครับคุณ{name} เช้านี้เป็นอย่างไรบ้างครับ",
+            "ยินดีที่ได้พบคุณ{name} ในเช้าวันนี้ครับ ต้องการให้ช่วยอะไรไหมครับ",
+        ],
+        "afternoon": [
+            "สวัสดีตอนบ่ายครับคุณ{name} วันนี้สบายดีไหมครับ",
+            "สวัสดีตอนบ่ายครับคุณ{name} มีอะไรให้ผมช่วยไหมครับ",
+            "ยินดีที่ได้พบคุณ{name} ในบ่ายวันนี้ครับ เป็นอย่างไรบ้างครับ",
+            "สวัสดีครับคุณ{name} ช่วงบ่ายวันนี้ต้องการให้ผมช่วยอะไรไหมครับ",
+        ],
+        "evening": [
+            "สวัสดีตอนเย็นครับคุณ{name} วันนี้เป็นอย่างไรบ้างครับ",
+            "สวัสดีตอนเย็นครับคุณ{name} มีอะไรให้ผมช่วยไหมครับ",
+            "ยินดีที่ได้พบคุณ{name} ในเย็นวันนี้ครับ สบายดีไหมครับ",
+            "สวัสดีครับคุณ{name} เย็นนี้ต้องการให้ผมช่วยอะไรหรือเปล่าครับ",
+        ],
+        "night": [
+            "สวัสดีตอนค่ำครับคุณ{name} วันนี้เป็นอย่างไรบ้างครับ",
+            "สวัสดีครับคุณ{name} ดึกแล้ว มีอะไรให้ผมช่วยไหมครับ",
+            "ยินดีที่ได้พบคุณ{name} ในคืนนี้ครับ สบายดีไหมครับ",
+        ],
+    },
+    "en": {
+        "morning": [
+            "Good morning, {name}. How are you today?",
+            "Good morning, {name}. How can I help you today?",
+            "Morning, {name}. I hope you are doing well. What can I do for you?",
+            "It is nice to see you this morning, {name}. How may I help?",
+        ],
+        "afternoon": [
+            "Good afternoon, {name}. How are you today?",
+            "Good afternoon, {name}. How can I help you?",
+            "It is nice to see you this afternoon, {name}. How have you been?",
+            "Hello, {name}. What can I do for you this afternoon?",
+        ],
+        "evening": [
+            "Good evening, {name}. How are you today?",
+            "Good evening, {name}. Is there anything I can help you with?",
+            "It is nice to see you this evening, {name}. How have you been?",
+            "Hello, {name}. What can I do for you this evening?",
+        ],
+        "night": [
+            "Good evening, {name}. How are you tonight?",
+            "Hello, {name}. You are up late. Is there anything I can help with?",
+            "It is nice to see you tonight, {name}. How may I help?",
+        ],
+    },
+}
+
+
+def _is_unknown_face_name(name):
+    try:
+        normalized = re.sub(r"[\s_]+", "", str(name).casefold())
+    except Exception:
+        return True
+    return normalized in {
+        "", "unknown", "unknow", "unrecognized", "unrecognised",
+        "none", "null", "?",
+    }
+
+
+def _face_greeting_period(moment=None):
+    hour = (moment or datetime.datetime.now()).hour
+    if 5 <= hour < 12:
+        return "morning"
+    if 12 <= hour < 17:
+        return "afternoon"
+    if 17 <= hour < 22:
+        return "evening"
+    return "night"
+
+
+def _read_face_greeting_state():
+    try:
+        with open(FACE_GREETING_STATE_FILE, "r", encoding="utf-8") as state_file:
+            state = json.load(state_file)
+        return state if isinstance(state, dict) else {"people": {}}
+    except Exception:
+        return {"people": {}}
+
+
+def _write_face_greeting_state(state):
+    temp_path = FACE_GREETING_STATE_FILE + ".tmp"
+    try:
+        with open(temp_path, "w", encoding="utf-8") as state_file:
+            json.dump(state, state_file, ensure_ascii=False, indent=2)
+        os.replace(temp_path, FACE_GREETING_STATE_FILE)
+    except Exception as exc:
+        print(f"[face greeting] Could not save state: {exc}", flush=True)
+        try:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+        except OSError:
+            pass
+
+
+def _take_face_greeting_event():
+    if not os.path.exists(FACE_GREETING_EVENT_FILE):
+        return None
+    try:
+        with open(FACE_GREETING_EVENT_FILE, "r", encoding="utf-8") as event_file:
+            event = json.load(event_file)
+        name = str(event.get("name", "")).strip()
+        try:
+            seen_at = float(event.get("seen_at", 0.0))
+        except (TypeError, ValueError):
+            seen_at = 0.0
+        if _is_unknown_face_name(name):
+            name = ""
+        os.remove(FACE_GREETING_EVENT_FILE)
+        if time.time() - seen_at > 10.0:
+            return None
+        return name or None
+    except (OSError, ValueError, TypeError) as exc:
+        print(f"[face greeting] Event read error: {exc}", flush=True)
+        return None
+
+
+def greet_recognized_face():
+    """Greet one queued known face when Pepper is free; return True if spoken."""
+    if not cfg("face_greeting_enabled", True):
+        # Do not keep a stale face queued and greet it later after re-enabling.
+        _take_face_greeting_event()
+        return False
+    if read_status() != "ready":
+        return False
+    try:
+        with open(COMMAND_FILE, "r", encoding="utf-8") as command_file:
+            if command_file.read().strip():
+                return False
+    except OSError:
+        pass
+    name = _take_face_greeting_event()
+    if not name:
+        return False
+
+    try:
+        reset_minutes = max(0.0, float(cfg("face_greeting_reset_minutes", 10)))
+    except (TypeError, ValueError):
+        reset_minutes = 10.0
+    state = _read_face_greeting_state()
+    people = state.get("people")
+    if not isinstance(people, dict):
+        people = {}
+        state["people"] = people
+    person_key = name.casefold()
+    previous = people.get(person_key, {})
+    now = time.time()
+    try:
+        last_greeted = float(previous.get("last_greeted_at", 0.0))
+    except (TypeError, ValueError):
+        last_greeted = 0.0
+    if now - last_greeted < reset_minutes * 60.0:
+        return False
+
+    lang = _current_lang if _current_lang in _FACE_GREETINGS else "th"
+    period = _face_greeting_period()
+    templates = _FACE_GREETINGS[lang][period]
+    choices = [
+        template.format(name=name) for template in templates
+        if template.format(name=name) != previous.get("greeting")
+    ]
+    if not choices:
+        choices = [template.format(name=name) for template in templates]
+    greeting = random.choice(choices)
+    print(f"\n[face greeting] {name}: {greeting}", flush=True)
+    write_status("wait")
+    if not speak(greeting, lang_override=lang):
+        write_status("ready")
+        return False
+
+    write_status("busy")
+    write_command(greeting)
+    play_local()
+    people[person_key] = {
+        "name": name,
+        "last_greeted_at": now,
+        "last_greeted_iso": datetime.datetime.fromtimestamp(now).isoformat(timespec="seconds"),
+        "language": lang,
+        "period": period,
+        "greeting": greeting,
+    }
+    _write_face_greeting_state(state)
+    return True
 
 # ── 12. Audio recording ───────────────────────────────────────────────────────
 class MicInput(object):
@@ -443,9 +722,13 @@ except pygame.error as e:
 
 cuda_count = ctranslate2.get_cuda_device_count()
 cuda_runtime_ok, missing_cuda_libs = cuda_runtime_available()
-use_cuda = cuda_count > 0 and cuda_runtime_ok
-print(f"CUDA devices: {cuda_count}  →  Using: {'GPU (CUDA)' if use_cuda else 'CPU'}", flush=True)
-if not use_cuda:
+FORCE_CPU = False
+use_cuda = not FORCE_CPU and cuda_count > 0 and cuda_runtime_ok
+device_label = "CPU (forced)" if FORCE_CPU else ("GPU (CUDA)" if use_cuda else "CPU")
+print(f"CUDA devices: {cuda_count}  →  Using: {device_label}", flush=True)
+if FORCE_CPU:
+    print("  [info] Whisper is configured to run on CPU with int8 compute.", flush=True)
+elif not use_cuda:
     if cuda_count > 0 and missing_cuda_libs:
         print(
             "  [warning] GPU detected, but missing CUDA libraries: "
@@ -590,6 +873,11 @@ try:
                 pre_buf.clear()
                 write_status("ready")
 
+        # Face greetings use the same TTS/command path as normal answers and
+        # are only dispatched while the conversation pipeline is idle.
+        if greet_recognized_face():
+            continue
+
         data = stream.read(CHUNK, exception_on_overflow=False)
         rms  = np.sqrt(np.mean(np.frombuffer(data, dtype=np.int16).astype(np.float32) ** 2))
         print(f"\r[{_current_lang.upper()}][RMS: {rms:6.0f}]", end="", flush=True)
@@ -612,12 +900,13 @@ try:
             answer = ask_gemini(text)
             print(f"Answer ({time.time()-t0:.1f}s): {answer}", flush=True)
 
-            if re.search(r'\[SING\]', answer, re.IGNORECASE):
-                result = pick_next_song()
+            sing_match = re.search(r'\[SING(?:_(THAI|KOREA|JAPAN))?\]', answer, re.IGNORECASE)
+            if sing_match:
+                result = pick_next_song(get_sing_country(answer))
                 if result:
                     audio_path, display = result
-                    intro = _SING_INTRO.get(_current_lang, "")
-                    if speak(intro):
+                    intro = _SING_INTRO.get(_current_lang, _SING_INTRO["th"])
+                    if speak(intro, lang_override=_current_lang):
                         if pepper_up:
                             write_status("busy")
                         write_command(intro)
@@ -637,6 +926,8 @@ try:
                             write_status("busy")
                         write_command(speak_text)
                         play_local()
+                # Song tokens are internal controls and must never reach TTS.
+                continue
             else:
                 mp3_match  = re.search(r'([\w\-]+\.mp3)', answer, re.IGNORECASE)
                 audio_path = find_audio_file(mp3_match.group(1)) if mp3_match else None
@@ -649,9 +940,8 @@ try:
                         write_command(display)
                         play_local()
 
-            no_sing = not re.search(r'\[SING\]', answer, re.IGNORECASE)
             no_mp3  = not re.search(r'[\w\-]+\.mp3', answer, re.IGNORECASE)
-            if no_sing and no_mp3:
+            if no_mp3:
                 if speak(answer):
                     if pepper_up:
                         write_status("busy")

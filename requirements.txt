@@ -9,4 +9,5 @@ numpy
 scipy
 ctranslate2
 edge-tts
+av
 huggingface_hub
