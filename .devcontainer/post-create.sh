@@ -49,11 +49,11 @@ if python2 naoqi_path.py >/dev/null 2>&1; then
   echo "==> Linux NAOqi SDK found at $(python2 naoqi_path.py)"
 else
   echo "==> Linux NAOqi SDK not found — downloading..."
-  if bash scripts/download_pynaoqi_linux.sh; then
+  if bash bin/setup/download_pynaoqi_linux.sh; then
     echo "==> Linux NAOqi SDK ready at $(python2 naoqi_path.py)"
   else
     echo "!! WARNING: SDK download failed — pepper_main.py will not start."
-    echo "   Retry with: bash scripts/download_pynaoqi_linux.sh"
+    echo "   Retry with: bash bin/setup/download_pynaoqi_linux.sh"
     echo "   Expected: SDK_pynaoqi/linux64/lib/python2.7/site-packages/_qi.so"
   fi
 fi

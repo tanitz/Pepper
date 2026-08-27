@@ -1,18 +1,19 @@
 # Opens the Pepper controller and Gemini listener in separate PowerShell windows.
-# Run from PowerShell: .\run_pepper_system.ps1
-# Prereq: .\setup.ps1 and .\setup_py2.ps1
+# Run from PowerShell: .\bin\launchers\run_pepper_system.ps1
+# Prereq: .\bin\setup\setup.ps1 and .\bin\setup\setup_py2.ps1
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-Set-Location -LiteralPath $scriptDir
+$projectRoot = (Resolve-Path (Join-Path $scriptDir "..\..")).Path
+Set-Location -LiteralPath $projectRoot
 
-$venvPy = Join-Path $scriptDir ".venv\Scripts\python.exe"
+$venvPy = Join-Path $projectRoot ".venv\Scripts\python.exe"
 if (-not (Test-Path -LiteralPath $venvPy)) {
-    throw "Missing .venv - run: .\setup.ps1"
+    throw "Missing .venv - run: .\bin\setup\setup.ps1"
 }
 
 function Resolve-Python2 {
     $candidates = @(
-        @{ Exe = (Join-Path $scriptDir ".venv-py2\Scripts\python.exe"); Args = @() },
+        @{ Exe = (Join-Path $projectRoot ".venv-py2\Scripts\python.exe"); Args = @() },
         @{ Exe = "C:\Python27\python.exe"; Args = @() },
         @{ Exe = "C:\Python27-x64\python.exe"; Args = @() },
         @{ Exe = "python2"; Args = @() },
@@ -69,7 +70,7 @@ function Start-PepperWindow {
 
     # Encode the child command so paths containing spaces or Thai characters
     # remain valid when PowerShell opens the new window.
-    $escapedDir = $scriptDir.Replace("'", "''")
+    $escapedDir = $projectRoot.Replace("'", "''")
     $escapedPy  = $PythonExe.Replace("'", "''")
     $argList = ($PythonArgs | ForEach-Object { "'$($_ -replace "'", "''")'" }) -join ", "
     if (-not $argList) { $argList = "" }

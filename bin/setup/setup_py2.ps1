@@ -1,17 +1,18 @@
 # Create an isolated Python 2.7 environment for pepper_main.py.
-# Usage: .\setup_py2.ps1
+# Usage: .\bin\setup\setup_py2.ps1
 
 $ErrorActionPreference = "Stop"
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-Set-Location -LiteralPath $scriptDir
+$projectRoot = (Resolve-Path (Join-Path $scriptDir "..\..")).Path
+Set-Location -LiteralPath $projectRoot
 
-$py3 = Join-Path $scriptDir ".venv\Scripts\python.exe"
-$py2Env = Join-Path $scriptDir ".venv-py2"
+$py3 = Join-Path $projectRoot ".venv\Scripts\python.exe"
+$py2Env = Join-Path $projectRoot ".venv-py2"
 $py2EnvExe = Join-Path $py2Env "Scripts\python.exe"
-$requirements = Join-Path $scriptDir "requirements-py2.txt"
+$requirements = Join-Path $projectRoot "requirements-py2.txt"
 
 if (-not (Test-Path -LiteralPath $py3)) {
-    throw "Missing .venv - run .\setup.ps1 first."
+    throw "Missing .venv - run .\bin\setup\setup.ps1 first."
 }
 
 $hostPython2 = $null
@@ -58,5 +59,5 @@ if ($LASTEXITCODE -ne 0) { throw "Python 2 qi import failed." }
 
 Write-Host ""
 Write-Host "Python 2 environment is ready."
-Write-Host "Run controller: .\run_pepper_controller.ps1"
-Write-Host "Run both:       .\run_pepper_system.ps1"
+Write-Host "Run controller: .\bin\launchers\run_pepper_controller.ps1"
+Write-Host "Run both:       .\bin\launchers\run_pepper_system.ps1"

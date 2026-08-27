@@ -13,22 +13,21 @@
 
 ```
 Pepper/
-├── listener_gemini_live.py   ← โปรแกรมหลัก 1: STT + AI + TTS (Python 3)
-├── pepper_main_py2.py        ← โปรแกรมหลัก 2: Pepper robot control (Python 2)
-├── config.json               ← config (copy จาก config.example.json)
-├── config.example.json       ← ตัวอย่าง config
-├── system_prompt.txt         ← system prompt ของ Gemini (แก้ได้ขณะรัน)
-├── run_listener.ps1          ← script รัน listener (Windows PowerShell)
-│
-├── SDK_pynaoqi/              ← Pepper NAOqi SDK (Linux)  [ดาวน์โหลดแยก ดู Setup]
-│   └── linux64/
-│       └── lib/python2.7/site-packages/   ← _qi.so + qi
-│
-└── model/                    ← STT model  [ดาวน์โหลดแยก ดู Setup ด้านล่าง]
-    └── thonburian-large-ct2/
-        ├── model.bin
-        ├── vocabulary.json
-        └── config.json
+├── pepper_main.py            ← Pepper controller + Tablet UI server (Python 2)
+├── listener_gemini_live.py   ← STT + Gemini + TTS (Python 3)
+├── naoqi_path.py             ← ค้นหา Pepper NAOqi SDK
+├── pepper_ui.html            ← หน้าหลักบน Tablet
+├── pepper_speak.html         ← หน้าสำรองสำหรับเล่นเสียง
+├── config/                   ← config และ system prompts
+├── model/                    ← Whisper CT2 model
+├── SDK_pynaoqi/              ← Pepper NAOqi SDK
+├── song/                     ← เพลงแยกตามภาษา/ประเทศ
+├── bin/
+│   ├── launchers/            ← สคริปต์ช่วยเปิดโปรแกรม
+│   ├── setup/                ← สคริปต์ติดตั้งและตรวจระบบ
+│   └── tools/                ← เครื่องมือทดสอบ/ดูแล repository
+├── requirements*.txt         ← Python dependencies
+└── run.txt                   ← สองคำสั่งหลักสำหรับรันระบบ
 ```
 
 ---
@@ -38,7 +37,7 @@ Pepper/
 | รายการ | รายละเอียด |
 |---|---|
 | Python 3.11+ | สำหรับ `listener_gemini_live.py` |
-| Python 2.7 | สำหรับ `pepper_main_py2.py` (NAOqi SDK รองรับ Python 2 เท่านั้น) |
+| Python 2.7 | สำหรับ `pepper_main.py` (NAOqi SDK รองรับ Python 2 เท่านั้น) |
 | Pepper robot | NAOqi 2.x, เชื่อมต่อ network เดียวกัน |
 | GPU CUDA (optional) | ถ้าไม่มีจะใช้ CPU (ช้ากว่า) |
 | Google Gemini API key | ฟรีที่ [aistudio.google.com](https://aistudio.google.com/app/apikey) |
@@ -86,7 +85,7 @@ snapshot_download('CodeHardThailand/whisper-th-large-v3-combined-ct2',
 ดาวน์โหลดจาก [snc-iiot/nao6-doc-sdk](https://github.com/snc-iiot/nao6-doc-sdk) แล้วติดตั้งด้วยสคริปต์:
 
 ```bash
-bash scripts/download_pynaoqi_linux.sh
+bash bin/setup/download_pynaoqi_linux.sh
 ```
 
 หรือทำมือ: ดาวน์โหลด `pynaoqi-python2.7-2.8.7.4-linux64-*.tar.gz` แล้วแตกเป็น:
@@ -139,7 +138,7 @@ copy config.example.json config.json
 }
 ```
 
-### 6. ตั้งค่า IP ใน `pepper_main_py2.py`
+### 6. ตั้งค่า IP ใน `pepper_main.py`
 
 เปิดไฟล์และแก้ไขบรรทัด:
 
@@ -155,19 +154,19 @@ COMPUTER_IP = "10.1.8.88"       # IP ของ computer ที่รันโป
 **Terminal 1** — รัน Pepper controller (Python 2):
 
 ```bash
-python2 pepper_main_py2.py
+.\.venv-py2\Scripts\python.exe .\pepper_main.py
 ```
 
 **Terminal 2** — รัน Listener (Python 3):
 
 ```bash
-python listener_gemini_live.py
+.\.venv\Scripts\python.exe .\listener_gemini_live.py
 ```
 
 หรือใช้ PowerShell script:
 
 ```powershell
-.\run_listener.ps1
+.\bin\launchers\run_listener.ps1
 ```
 
 ---

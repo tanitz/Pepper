@@ -117,9 +117,12 @@ session          = None
 tablet           = None
 session_lock     = threading.RLock()
 camera_lock      = threading.Lock()
+camera_cache_lock = threading.Lock()
 camera_proxy     = None
 camera_client    = None
 camera_session   = None
+camera_last_bmp  = None
+camera_last_bmp_at = 0.0
 face_lock        = threading.Lock()
 face_boxes       = []
 face_known_names = []
@@ -361,7 +364,11 @@ def get_face_info_json():
 def create_face_capture():
     """Freeze one camera frame for the enrollment preview."""
     global pending_face_capture, face_capture_seq
-    image_data = get_camera_bmp()
+    # Prefer the frame already shown on the tablet.  Starting a second camera
+    # request while the live preview is active can stall ALVideoDevice.
+    image_data = get_recent_camera_bmp(1.0)
+    if image_data is None:
+        image_data = get_camera_bmp()
     with face_capture_lock:
         now_ms = int(time.time() * 1000)
         face_capture_seq += 1
@@ -438,7 +445,14 @@ def learn_captured_face(capture_id, raw_name):
     if name in learned_names or comparable_name in learned_names:
         return False, "name_exists", "This name is already registered."
 
-    if not detector.learnFace(comparable_name):
+    try:
+        learned = detector.learnFace(comparable_name)
+    finally:
+        # learnFace temporarily owns the camera pipeline on some Pepper/NAOqi
+        # versions.  Recreate our preview subscription instead of reusing the
+        # potentially stale client after enrollment.
+        reset_camera_subscription()
+    if not learned:
         return False, "no_face", "No clear face was found. Keep facing Pepper and retake."
 
     learned_names = list(detector.getLearnedFacesList())
@@ -461,6 +475,20 @@ def _close_camera_locked():
     camera_proxy = None
     camera_client = None
     camera_session = None
+
+
+def reset_camera_subscription():
+    """Force the next preview request to create a fresh video client."""
+    with camera_lock:
+        _close_camera_locked()
+
+
+def get_recent_camera_bmp(max_age):
+    """Return the most recent encoded preview without touching ALVideoDevice."""
+    with camera_cache_lock:
+        if camera_last_bmp is None or time.time() - camera_last_bmp_at > max_age:
+            return None
+        return camera_last_bmp
 
 
 def _rgb_to_bmp(width, height, rgb_data):
@@ -494,6 +522,7 @@ def _rgb_to_bmp(width, height, rgb_data):
 def get_camera_bmp():
     """Capture one top-camera frame and return it as BMP bytes."""
     global camera_proxy, camera_client, camera_session
+    global camera_last_bmp, camera_last_bmp_at
     with camera_lock:
         if session is None:
             raise RuntimeError("Pepper session is not connected")
@@ -522,7 +551,11 @@ def get_camera_bmp():
                 width, height = int(frame[0]), int(frame[1])
                 # Copy before releaseImage returns NAOqi's shared buffer.
                 rgb_data = bytearray(frame[6])
-                return _rgb_to_bmp(width, height, rgb_data)
+                image_data = _rgb_to_bmp(width, height, rgb_data)
+                with camera_cache_lock:
+                    camera_last_bmp = image_data
+                    camera_last_bmp_at = time.time()
+                return image_data
             finally:
                 if frame is not None:
                     try:

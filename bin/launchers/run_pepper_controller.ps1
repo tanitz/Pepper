@@ -1,9 +1,10 @@
 # Run pepper_main.py with Python 2.7 without changing the system PATH.
-# Usage: .\run_pepper_controller.ps1
+# Usage: .\bin\launchers\run_pepper_controller.ps1
 
 $ErrorActionPreference = "Stop"
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-Set-Location -LiteralPath $scriptDir
+$projectRoot = (Resolve-Path (Join-Path $scriptDir "..\..")).Path
+Set-Location -LiteralPath $projectRoot
 
 # pepper_main.py prints UTF-8 bytes under Python 2.
 & chcp.com 65001 *> $null
@@ -11,7 +12,7 @@ Set-Location -LiteralPath $scriptDir
 [Console]::OutputEncoding = New-Object Text.UTF8Encoding $false
 
 $candidates = @(
-    @{ Exe = (Join-Path $scriptDir ".venv-py2\Scripts\python.exe"); Args = @() },
+    @{ Exe = (Join-Path $projectRoot ".venv-py2\Scripts\python.exe"); Args = @() },
     @{ Exe = "C:\Python27\python.exe"; Args = @() },
     @{ Exe = "C:\Python27-x64\python.exe"; Args = @() },
     @{ Exe = "python2"; Args = @() },

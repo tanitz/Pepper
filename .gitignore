@@ -27,8 +27,9 @@ config/face_greeting_state.json
 config/face_greeting_state.json.tmp
 
 # ── Old / dev files ───────────────────────────────────────────────────────────
-bin/
+face_captures/
 recordings/
+bin/archive/
 
 # ── Local venv ────────────────────────────────────────────────────────────────
 .venv/

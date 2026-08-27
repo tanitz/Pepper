@@ -24,7 +24,7 @@ HOST_PYTHON := $(shell \
 UNAME_S := $(shell uname -s)
 
 # Strip Windows CRLF so bash does not fail on `set -o pipefail` after a Windows checkout.
-# Caller must pass a quoted path: $(call run_bash,"$(ROOT)/scripts/foo.sh")
+# Caller must pass a quoted path: $(call run_bash,"$(ROOT)/bin/setup/foo.sh")
 define run_bash
 	@sed -i.bak 's/\r$$//' $(1) && rm -f $(1).bak
 	@bash $(1)
@@ -33,7 +33,7 @@ endef
 help:
 	@echo "Pepper Makefile (local venv — macOS / Linux)"
 	@echo ""
-	@echo "  Windows users: use PowerShell instead →  .\\setup.ps1 help"
+	@echo "  Windows users: use PowerShell instead →  .\\bin\\setup\\setup.ps1 help"
 	@echo ""
 	@echo "  make setup          Create .venv, install deps, bootstrap config"
 	@echo "  make setup-venv     Create .venv with Python 3.11 only"
@@ -126,7 +126,7 @@ setup-config:
 	fi
 
 setup-sdk:
-	$(call run_bash,"$(ROOT)/scripts/download_pynaoqi_linux.sh")
+	$(call run_bash,"$(ROOT)/bin/setup/download_pynaoqi_linux.sh")
 
 setup-model: setup-venv
 	@echo "==> Downloading Thonburian Whisper CT2 (~3.1 GB)..."
@@ -143,7 +143,7 @@ setup-model: setup-venv
 # ── Run / check ──────────────────────────────────────────────────────────────
 
 check status ready doctor:
-	$(call run_bash,"$(ROOT)/scripts/check_ready.sh")
+	$(call run_bash,"$(ROOT)/bin/setup/check_ready.sh")
 
 run-listener: setup-venv
 	@test -x "$(PY)" || (echo "[FAIL] missing .venv — run: make setup"; exit 1)

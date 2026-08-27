@@ -2,7 +2,7 @@
 # Download SoftBank pynaoqi 2.8.7.4 (linux64) into SDK_pynaoqi/linux64/
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 DEST="${ROOT}/SDK_pynaoqi/linux64"
 QI_SO="${DEST}/lib/python2.7/site-packages/_qi.so"
 

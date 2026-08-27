@@ -1,8 +1,8 @@
 # Pepper - Windows setup (venv + deps + readiness). Mirrors Makefile targets.
 # Usage:
-#   powershell -ExecutionPolicy Bypass -File .\setup.ps1
-#   powershell -ExecutionPolicy Bypass -File .\setup.ps1 check
-#   powershell -ExecutionPolicy Bypass -File .\setup.ps1 setup-model
+#   powershell -ExecutionPolicy Bypass -File .\bin\setup\setup.ps1
+#   powershell -ExecutionPolicy Bypass -File .\bin\setup\setup.ps1 check
+#   powershell -ExecutionPolicy Bypass -File .\bin\setup\setup.ps1 setup-model
 
 [CmdletBinding()]
 param(
@@ -16,7 +16,8 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$Root = Split-Path -Parent $MyInvocation.MyCommand.Path
+$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$Root = (Resolve-Path (Join-Path $scriptDir "..\..")).Path
 Set-Location -LiteralPath $Root
 
 $VenvDir = Join-Path $Root ".venv"
@@ -33,26 +34,26 @@ function Show-Help {
     Write-Host @"
 Pepper setup.ps1 (Windows venv)
 
-  .\setup.ps1                Create .venv, install deps, bootstrap config
-  .\setup.ps1 setup-venv     Create .venv with Python 3.11 only
-  .\setup.ps1 install        pip install -r requirements.txt into .venv
-  .\setup.ps1 install-cuda   Optional NVIDIA CUDA libs (GPU Whisper)
-  .\setup.ps1 check          READY / NOT READY report
-  .\setup.ps1 setup-config   Create config\config.json from example if missing
-  .\setup.ps1 setup-model    Download Thonburian Whisper CT2 model (~3.1 GB)
-  .\setup.ps1 run-listener   Run listener_gemini_live.py with .venv
-  .\setup.ps1 clean-venv     Remove .venv
+  .\bin\setup\setup.ps1                Create .venv, install deps, bootstrap config
+  .\bin\setup\setup.ps1 setup-venv     Create .venv with Python 3.11 only
+  .\bin\setup\setup.ps1 install        pip install -r requirements.txt into .venv
+  .\bin\setup\setup.ps1 install-cuda   Optional NVIDIA CUDA libs (GPU Whisper)
+  .\bin\setup\setup.ps1 check          READY / NOT READY report
+  .\bin\setup\setup.ps1 setup-config   Create config\config.json from example if missing
+  .\bin\setup\setup.ps1 setup-model    Download Thonburian Whisper CT2 model (~3.1 GB)
+  .\bin\setup\setup.ps1 run-listener   Run listener_gemini_live.py with .venv
+  .\bin\setup\setup.ps1 clean-venv     Remove .venv
 
 Typical flow:
-  1) .\setup.ps1
+  1) .\bin\setup\setup.ps1
   2) edit config\config.json  (gemini_api_key)
-  3) .\setup.ps1 setup-model
+  3) .\bin\setup\setup.ps1 setup-model
   4) place Windows NAOqi under SDK_pynaoqi\pynaoqi\lib\  (_qi.pyd + dlls)
-  5) .\setup.ps1 check
-  6) .\run_pepper_system.ps1   (or .\setup.ps1 run-listener)
+  5) .\bin\setup\setup.ps1 check
+  6) .\bin\launchers\run_pepper_system.ps1
 
 If scripts are blocked:
-  powershell -ExecutionPolicy Bypass -File .\setup.ps1
+  powershell -ExecutionPolicy Bypass -File .\bin\setup\setup.ps1
 
 Activate manually:
   .\.venv\Scripts\Activate.ps1
@@ -102,8 +103,8 @@ Python 3.11-3.14 not found.
 Install e.g.:
   winget install Python.Python.3.14
 Then:
-  powershell -ExecutionPolicy Bypass -File .\setup.ps1 clean-venv
-  powershell -ExecutionPolicy Bypass -File .\setup.ps1
+  powershell -ExecutionPolicy Bypass -File .\bin\setup\setup.ps1 clean-venv
+  powershell -ExecutionPolicy Bypass -File .\bin\setup\setup.ps1
 "@
     }
 
@@ -121,8 +122,8 @@ Then:
             throw @"
 Existing .venv is Python $($existing) but this project needs 3.11-3.14.
 Recreate it:
-  powershell -ExecutionPolicy Bypass -File .\setup.ps1 clean-venv
-  powershell -ExecutionPolicy Bypass -File .\setup.ps1
+  powershell -ExecutionPolicy Bypass -File .\bin\setup\setup.ps1 clean-venv
+  powershell -ExecutionPolicy Bypass -File .\bin\setup\setup.ps1
 "@
         }
         Write-Ok "venv already exists: $VenvDir"
@@ -280,7 +281,7 @@ function Invoke-Check {
         $ver = & $VenvPy --version 2>&1
         Ok "venv python: $VenvPy ($ver)"
     } else {
-        Fail "missing .venv - run: .\setup.ps1"
+        Fail "missing .venv - run: .\bin\setup\setup.ps1"
     }
     Write-Host ""
 
@@ -328,7 +329,7 @@ function Invoke-Check {
     if (Test-Path -LiteralPath $modelBin) {
         Ok "Whisper model present ($modelBin)"
     } else {
-        Fail "Whisper model.bin missing - download with: .\setup.ps1 setup-model"
+        Fail "Whisper model.bin missing - download with: .\bin\setup\setup.ps1 setup-model"
     }
 
     $configPath = Join-Path $Root "config\config.json"
@@ -345,7 +346,7 @@ function Invoke-Check {
             }
         }
     } else {
-        Fail "config\config.json missing - run: .\setup.ps1 setup-config"
+        Fail "config\config.json missing - run: .\bin\setup\setup.ps1 setup-config"
     }
 
     $mainPy = Join-Path $Root "pepper_main.py"
@@ -361,7 +362,7 @@ function Invoke-Check {
     if (Test-Path -LiteralPath $VenvPy) {
         foreach ($pkg in @("faster_whisper", "google.generativeai", "sounddevice", "pygame", "numpy", "scipy")) {
             if (Test-PythonImport $pkg) { Ok "import $pkg" }
-            else { Fail "cannot import $pkg - run: .\setup.ps1 install" }
+            else { Fail "cannot import $pkg - run: .\bin\setup\setup.ps1 install" }
         }
         if (Test-PythonImport "ctranslate2") {
             Ok "import ctranslate2"
@@ -379,13 +380,13 @@ function Invoke-Check {
             if ($cudaCount -gt 0) {
                 Ok "CUDA devices: $cudaCount (Whisper will use GPU)"
             } else {
-                Warn "CUDA devices: 0 - Whisper will use CPU (GPU: .\setup.ps1 install-cuda)"
+                Warn "CUDA devices: 0 - Whisper will use CPU (GPU: .\bin\setup\setup.ps1 install-cuda)"
             }
         } else {
-            Fail "cannot import ctranslate2 - run: .\setup.ps1 install"
+            Fail "cannot import ctranslate2 - run: .\bin\setup\setup.ps1 install"
         }
     } else {
-        Fail "skip package imports - create venv with: .\setup.ps1"
+        Fail "skip package imports - create venv with: .\bin\setup\setup.ps1"
     }
     Write-Host ""
 
@@ -393,12 +394,12 @@ function Invoke-Check {
     Write-Host "  OK=$script:CheckPass  WARN=$script:CheckWarn  FAIL=$script:CheckFail"
     if ($script:CheckFail -eq 0) {
         Write-Host "  STATUS: READY to run" -ForegroundColor Green
-        Write-Host "    .\run_pepper_system.ps1"
-        Write-Host "    # or: .\setup.ps1 run-listener"
+        Write-Host "    .\bin\launchers\run_pepper_system.ps1"
+        Write-Host "    # or: .\bin\setup\setup.ps1 run-listener"
         exit 0
     } else {
         Write-Host "  STATUS: NOT READY" -ForegroundColor Red
-        Write-Host "  Fix FAIL items above, then re-run: .\setup.ps1 check"
+        Write-Host "  Fix FAIL items above, then re-run: .\bin\setup\setup.ps1 check"
         exit 1
     }
 }
@@ -406,7 +407,7 @@ function Invoke-Check {
 function Run-Listener {
     Ensure-Venv
     if (-not (Test-Path -LiteralPath $VenvPy)) {
-        throw "missing .venv - run: .\setup.ps1"
+        throw "missing .venv - run: .\bin\setup\setup.ps1"
     }
     & $VenvPy (Join-Path $Root "listener_gemini_live.py")
 }
@@ -426,11 +427,11 @@ function Invoke-Setup {
     Setup-Config
     Write-Host ""
     Write-Host "Setup finished."
-    Write-Host "  Optional: .\setup.ps1 setup-model"
+    Write-Host "  Optional: .\bin\setup\setup.ps1 setup-model"
     Write-Host "  Place Windows NAOqi at: SDK_pynaoqi\pynaoqi\lib\  (_qi.pyd)"
-    Write-Host "  Optional GPU: .\setup.ps1 install-cuda"
-    Write-Host "  Then: .\setup.ps1 check"
-    Write-Host "  Run:  .\run_pepper_system.ps1"
+    Write-Host "  Optional GPU: .\bin\setup\setup.ps1 install-cuda"
+    Write-Host "  Then: .\bin\setup\setup.ps1 check"
+    Write-Host "  Run:  .\bin\launchers\run_pepper_system.ps1"
     Write-Host "  Or:   .\.venv\Scripts\Activate.ps1"
 }
 

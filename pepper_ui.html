@@ -730,6 +730,7 @@ var saveFaceButton = document.getElementById('save-face-btn');
 var cameraTimer = null;
 /* Small pause prevents a tight retry loop while keeping preview latency low. */
 var cameraFrameDelayMs = 50;
+var cameraPaused = false;
 var faceRequestBusy = false;
 var faceCaptureBusy = false;
 var activeCaptureId = 0;
@@ -745,7 +746,26 @@ function showEnrollError(message) {
   faceCaptureBusy = false;
 }
 
+function pauseCameraPreview() {
+  cameraPaused = true;
+  clearTimeout(cameraTimer);
+  cameraTimer = null;
+}
+
+function resumeCameraPreview() {
+  if (!cameraPaused) return;
+  cameraPaused = false;
+  clearTimeout(cameraTimer);
+  loadCameraFrame();
+}
+
 function requestFaceSnapshot() {
+  pauseCameraPreview();
+  /* Let any in-flight live frame finish before requesting the frozen frame. */
+  setTimeout(sendFaceSnapshotRequest, 150);
+}
+
+function sendFaceSnapshotRequest() {
   var xhr = new XMLHttpRequest();
   xhr.open('GET', '/capture_face?_=' + new Date().getTime(), true);
   xhr.onreadystatechange = function() {
@@ -815,6 +835,7 @@ function closeEnrollModal() {
   saveFaceButton.disabled = false;
   enrollCloseButton.disabled = false;
   captureButton.disabled = false;
+  resumeCameraPreview();
 }
 
 function saveFace() {
@@ -940,6 +961,7 @@ function refreshFaces() {
 }
 
 function loadCameraFrame() {
+  if (cameraPaused) return;
   cameraImage.src = '/camera.bmp?_=' + new Date().getTime();
 }
 
@@ -949,7 +971,9 @@ cameraImage.onload = function() {
   cameraDot.className = 'camera-dot online';
   updateFaceLayerGeometry();
   clearTimeout(cameraTimer);
-  cameraTimer = setTimeout(loadCameraFrame, cameraFrameDelayMs);
+  if (!cameraPaused) {
+    cameraTimer = setTimeout(loadCameraFrame, cameraFrameDelayMs);
+  }
 };
 
 cameraImage.onerror = function() {
@@ -959,7 +983,9 @@ cameraImage.onerror = function() {
   cameraDot.className = 'camera-dot';
   renderFaces([]);
   clearTimeout(cameraTimer);
-  cameraTimer = setTimeout(loadCameraFrame, 1500);
+  if (!cameraPaused) {
+    cameraTimer = setTimeout(loadCameraFrame, 1500);
+  }
 };
 
 window.addEventListener('resize', updateFaceLayerGeometry, false);

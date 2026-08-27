@@ -1,12 +1,13 @@
-# push.ps1 — sync โค้ดขึ้น GitHub
-# วิธีใช้: .\push.ps1 หรือ .\push.ps1 "ข้อความ commit"
+# Sync project code to GitHub.
+# Usage: .\bin\tools\push.ps1 or pass a commit message as the first argument.
 
 param([string]$msg = "")
 
-Set-Location $PSScriptRoot
+$projectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
+Set-Location -LiteralPath $projectRoot
 
 Write-Host "=== Pull latest ===" -ForegroundColor Cyan
-git pull origin main
+git pull origin develop
 if ($LASTEXITCODE -ne 0) { Write-Host "Pull failed" -ForegroundColor Red; exit 1 }
 
 Write-Host "`n=== Changed files ===" -ForegroundColor Cyan
@@ -14,13 +15,17 @@ git status --short
 
 $files = @(
     "listener_gemini_live.py",
-    "pepper_main_py2.py",
-    "system_prompt.txt",
-    "config.example.json",
-    "run_listener.ps1",
+    "pepper_main.py",
+    "pepper_ui.html",
+    "pepper_speak.html",
+    "naoqi_path.py",
+    "config",
+    "bin",
     "README.md",
     ".gitignore",
-    "push.ps1"
+    "requirements.txt",
+    "requirements-cuda.txt",
+    "requirements-py2.txt"
 )
 
 $changed = $false
@@ -35,7 +40,7 @@ foreach ($f in $files) {
 }
 
 if (-not $changed) {
-    Write-Host "`nไม่มีการเปลี่ยนแปลง" -ForegroundColor Yellow
+    Write-Host "`nNo changes found." -ForegroundColor Yellow
     exit 0
 }
 
@@ -48,9 +53,9 @@ Write-Host "`n=== Commit: $msg ===" -ForegroundColor Cyan
 git commit -m $msg
 
 Write-Host "`n=== Push ===" -ForegroundColor Cyan
-git push origin main
+git push origin develop
 if ($LASTEXITCODE -eq 0) {
-    Write-Host "`nPush สำเร็จ!" -ForegroundColor Green
+    Write-Host "`nPush completed." -ForegroundColor Green
 } else {
-    Write-Host "`nPush ล้มเหลว" -ForegroundColor Red
+    Write-Host "`nPush failed." -ForegroundColor Red
 }

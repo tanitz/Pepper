@@ -3,7 +3,7 @@
 # Exit 0 = READY, 1 = NOT READY
 set -uo pipefail
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 
 PASS=0

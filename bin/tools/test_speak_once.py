@@ -4,7 +4,8 @@
 # Run: python test_speak_once.py   (Python 2 / qi framework เหมือน pepper_main.py)
 
 import sys, os as _os
-sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+_PROJECT_ROOT = _os.path.abspath(_os.path.join(_os.path.dirname(__file__), "..", ".."))
+sys.path.insert(0, _PROJECT_ROOT)
 from naoqi_path import add_sdk_to_path
 add_sdk_to_path()
 
@@ -24,7 +25,7 @@ VOLUME      = 80
 SPEECH_FILE = "speech.mp3"
 TEST_TEXT   = u"ทดสอบเสียง speech.mp3"
 
-_HTML_DIR = _os.path.dirname(_os.path.abspath(__file__))
+_HTML_DIR = _PROJECT_ROOT
 
 # ── MP3 duration (นับ frame จริง ไม่ใช้ lib ภายนอก) ─────────────────────────
 _BITRATES_V1L3 = [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320]
